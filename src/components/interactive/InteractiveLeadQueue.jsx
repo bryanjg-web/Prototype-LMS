@@ -1,6 +1,6 @@
 import { useState, useMemo } from "react";
 import { useApp } from "../../context/AppContext";
-import { getAllLeads, getUnresolvedLeads } from "../../selectors/demoSelectors";
+import { getAllLeads, getUnresolvedLeads, getInsuranceCompanies } from "../../selectors/demoSelectors";
 import { getLastTranslogTime } from "../LeadQueue";
 import LeadQueue from "../LeadQueue";
 
@@ -61,13 +61,15 @@ export default function InteractiveLeadQueue() {
   const [resTypeFilter, setResTypeFilter] = useState("All");
   const [cdpFilter, setCdpFilter] = useState("All");
   const [statusFilter, setStatusFilter] = useState("All");
+  const [insuranceFilter, setInsuranceFilter] = useState("All");
 
   // Derive unique values for dropdowns
   const filterOptions = useMemo(() => {
     const resTypes = [...new Set(allLeads.map((l) => l.reservationType).filter(Boolean))].sort();
     const cdps = [...new Set(allLeads.map((l) => l.cdp).filter(Boolean))].sort();
     const statuses = [...new Set(allLeads.map((l) => l.status))].sort();
-    return { resTypes, cdps, statuses };
+    const insuranceCompanies = getInsuranceCompanies();
+    return { resTypes, cdps, statuses, insuranceCompanies };
   }, [allLeads]);
 
   const filteredLeads = useMemo(() => {
@@ -101,9 +103,12 @@ export default function InteractiveLeadQueue() {
     if (statusFilter !== "All") {
       result = result.filter((l) => l.status === statusFilter);
     }
+    if (insuranceFilter !== "All") {
+      result = result.filter((l) => l.insuranceCompany === insuranceFilter);
+    }
 
     return result;
-  }, [allLeads, selectedPreset, useCustom, customStart, customEnd, resTypeFilter, cdpFilter, statusFilter]);
+  }, [allLeads, selectedPreset, useCustom, customStart, customEnd, resTypeFilter, cdpFilter, statusFilter, insuranceFilter]);
 
   const handleLeadClick = (lead) => {
     selectLead(lead.id);
@@ -193,6 +198,14 @@ export default function InteractiveLeadQueue() {
           <option>All</option>
           {filterOptions.statuses.map((s) => (
             <option key={s}>{s}</option>
+          ))}
+        </select>
+
+        <label className="text-xs text-[#6E6E6E] font-medium ml-2">Insurance Co.</label>
+        <select className={selectClass} value={insuranceFilter} onChange={(e) => setInsuranceFilter(e.target.value)}>
+          <option>All</option>
+          {filterOptions.insuranceCompanies.map((c) => (
+            <option key={c}>{c}</option>
           ))}
         </select>
       </div>

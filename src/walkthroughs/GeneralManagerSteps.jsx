@@ -9,7 +9,7 @@ import { leads, branchManagers } from "../data/mockData";
 const summaryCards = [
   { label: "Cancelled Unreviewed", value: "23", color: "text-[#C62828]" },
   { label: "Unused Overdue", value: "8", color: "text-[#F5C400]" },
-  { label: "Enrichment Compliance", value: "91%", color: "text-[#2E7D32]" },
+  { label: "Comment Compliance", value: "91%", color: "text-[#2E7D32]" },
 ];
 
 const cancelledLeads = leads.filter((l) => l.status === "Cancelled" && !l.archived);
@@ -28,7 +28,7 @@ function GM2() {
     <div>
       <div className="flex items-center gap-4 mb-6">
         <h2 className="text-xl font-semibold text-[#1A1A1A]">Compliance Dashboard</h2>
-        <span className="text-sm text-[#6E6E6E]">D. Williams — Eastern Region</span>
+        <span className="text-sm text-[#6E6E6E]">D. Williams — Eastern Zone</span>
       </div>
       <ComplianceDashboard branchManagers={branchManagers} summaryCards={summaryCards} />
     </div>

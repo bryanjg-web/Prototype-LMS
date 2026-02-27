@@ -30,14 +30,16 @@ export default function InteractiveOrgMapping() {
       <h2 className="text-xl font-semibold text-[#1A1A1A] mb-1">Organisation Mapping</h2>
       <p className="text-sm text-[#6E6E6E] mb-4">Click a GM cell to edit. Assign missing GMs.</p>
 
-      <div className="max-w-3xl space-y-4">
+      <div className="max-w-5xl space-y-4">
         <div className="border border-[#E6E6E6] rounded-lg overflow-hidden">
           <table className="w-full text-sm">
             <thead>
               <tr className="bg-gray-50 text-left text-xs text-[#6E6E6E] uppercase tracking-wide">
                 <th className="px-4 py-3">Branch Manager</th>
                 <th className="px-4 py-3">Branch Location</th>
+                <th className="px-4 py-3">Area Manager</th>
                 <th className="px-4 py-3">General Manager</th>
+                <th className="px-4 py-3">Zone</th>
               </tr>
             </thead>
             <tbody>
@@ -56,6 +58,7 @@ export default function InteractiveOrgMapping() {
                   >
                     <td className="px-4 py-2.5">{row.bm}</td>
                     <td className="px-4 py-2.5">{row.branch}</td>
+                    <td className="px-4 py-2.5 text-[#6E6E6E]">{row.am || "—"}</td>
                     <td className="px-4 py-2.5">
                       {isEditing ? (
                         <select
@@ -85,6 +88,7 @@ export default function InteractiveOrgMapping() {
                         </button>
                       )}
                     </td>
+                    <td className="px-4 py-2.5 text-[#6E6E6E]">{row.zone || "—"}</td>
                   </motion.tr>
                 );
               })}

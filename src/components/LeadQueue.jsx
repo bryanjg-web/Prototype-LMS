@@ -52,7 +52,7 @@ export default function LeadQueue({
           animate={{ opacity: 1, y: 0 }}
           className="mb-4 px-4 py-2 bg-yellow-50 border border-yellow-200 rounded text-sm text-[#1A1A1A]"
         >
-          <span className="font-semibold text-[#F5C400]">{bannerCount}</span> lead{bannerCount !== 1 ? "s" : ""} need enrichment
+          <span className="font-semibold text-[#F5C400]">{bannerCount}</span> lead{bannerCount !== 1 ? "s" : ""} need comments
         </motion.div>
       )}
 
@@ -68,7 +68,7 @@ export default function LeadQueue({
               <th className="px-4 py-3">Days Open</th>
               <th className="px-4 py-3">Time to 1st Contact</th>
               <th className="px-4 py-3">Last Activity</th>
-              <th className="px-4 py-3">Enrichment</th>
+              <th className="px-4 py-3">Comments</th>
             </tr>
           </thead>
           <tbody>

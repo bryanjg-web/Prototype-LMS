@@ -2,13 +2,13 @@ const journeys = [
   {
     key: "bm",
     icon: "📋",
-    role: "Branch Manager",
+    role: "Branch View",
     description: "Review and enrich your leads",
   },
   {
     key: "gm",
     icon: "📊",
-    role: "General Manager",
+    role: "Manager View",
     description: "Track compliance and drive accountability",
   },
   {
@@ -28,7 +28,7 @@ export default function Landing({ onSelect }) {
         </h1>
         <div className="w-16 h-1 bg-[#F5C400] mx-auto mt-3 mb-4" />
         <p className="text-[#6E6E6E] text-lg">
-          A visibility and enrichment layer for insurance replacement lead conversion
+          A visibility and activity layer for insurance replacement lead conversion
         </p>
       </div>
 

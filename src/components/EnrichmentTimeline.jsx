@@ -10,9 +10,9 @@ export default function EnrichmentTimeline({ entries = [] }) {
     return (
       <div>
         <h3 className="text-xs font-semibold text-[#6E6E6E] uppercase tracking-wide mb-2">
-          Enrichment Activity
+          Comment History
         </h3>
-        <p className="text-sm text-[#6E6E6E] italic">No enrichment activity yet</p>
+        <p className="text-sm text-[#6E6E6E] italic">No comment history yet</p>
       </div>
     );
   }
@@ -20,7 +20,7 @@ export default function EnrichmentTimeline({ entries = [] }) {
   return (
     <div>
       <h3 className="text-xs font-semibold text-[#6E6E6E] uppercase tracking-wide mb-3">
-        Enrichment Activity
+        Comment History
       </h3>
       <div className="space-y-0">
         {entries.map((entry, i) => {

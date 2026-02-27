@@ -13,6 +13,7 @@ import InteractiveSpotCheck from "./InteractiveSpotCheck";
 import InteractiveUploads from "./InteractiveUploads";
 import InteractiveOrgMapping from "./InteractiveOrgMapping";
 import InteractiveLegend from "./InteractiveLegend";
+import InteractiveLeaderboard from "./InteractiveLeaderboard";
 
 const viewComponents = {
   "bm-dashboard": InteractiveDashboard,
@@ -30,6 +31,8 @@ const viewComponents = {
   "admin-uploads": InteractiveUploads,
   "admin-org-mapping": InteractiveOrgMapping,
   "admin-legend": InteractiveLegend,
+  "bm-leaderboard": InteractiveLeaderboard,
+  "gm-leaderboard": InteractiveLeaderboard,
 };
 
 export default function InteractiveShell() {

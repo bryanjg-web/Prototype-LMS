@@ -10,6 +10,7 @@ export const roleNav = {
     { id: "bm-inbox", label: "Inbox", icon: "inbox" },
     { id: "bm-todo", label: "My To Do", icon: "check-circle" },
     { id: "bm-leads", label: "My Leads", icon: "list" },
+    { id: "bm-leaderboard", label: "Leaderboard", icon: "trophy" },
   ],
   gm: [
     { id: "gm-dashboard", label: "Dashboard", icon: "grid" },
@@ -18,6 +19,7 @@ export const roleNav = {
     { id: "gm-unused", label: "Unused Leads", icon: "list" },
     { id: "gm-review", label: "Lead Review", icon: "columns" },
     { id: "gm-spot-check", label: "Spot Check", icon: "search" },
+    { id: "gm-leaderboard", label: "Leaderboard", icon: "trophy" },
   ],
   admin: [
     { id: "admin-dashboard", label: "Dashboard", icon: "grid" },
@@ -31,8 +33,8 @@ export const roleNav = {
 export const drillDownViews = ["bm-lead-detail", "gm-review-detail"];
 
 export const roleMeta = {
-  bm: { label: "Branch Manager", shortLabel: "BM" },
-  gm: { label: "General Manager", shortLabel: "GM" },
+  bm: { label: "Branch View", shortLabel: "Branch" },
+  gm: { label: "Manager View", shortLabel: "Manager" },
   admin: { label: "Admin", shortLabel: "Admin" },
 };
 

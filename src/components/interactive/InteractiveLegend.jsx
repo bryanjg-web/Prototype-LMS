@@ -82,8 +82,8 @@ export default function InteractiveLegend() {
     <div>
       <h2 className="text-xl font-semibold text-[#1A1A1A] mb-1">Cancellation Reason Legend</h2>
       <p className="text-sm text-[#6E6E6E] mb-4">
-        Configure the categories and reasons that Branch Managers use when enriching cancelled leads.
-        Changes here flow to all enrichment forms across the portal.
+        Configure the categories and reasons that Branch Managers use when commenting on cancelled leads.
+        Changes here flow to all comment forms across the portal.
       </p>
 
       <div className="flex items-center gap-3 mb-5">

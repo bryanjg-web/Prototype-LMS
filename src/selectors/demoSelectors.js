@@ -1,4 +1,4 @@
-import { leads, branchManagers, weeklyTrends } from "../data/mockData";
+import { leads, branchManagers, weeklyTrends, orgMapping } from "../data/mockData";
 
 // BM selectors
 export function getLeadsForBranch(branch) {
@@ -77,7 +77,7 @@ export function getBMTrends() {
     labels,
     leadVolume: weeks.map((w) => w.totalLeads),
     conversionRate: weeks.map((w) => w.conversionRate),
-    enrichmentRate: weeks.map((w) => w.enrichmentRate),
+    commentRate: weeks.map((w) => w.commentRate),
   };
 }
 
@@ -87,7 +87,29 @@ export function getGMTrends() {
   return {
     labels,
     cancelledUnreviewed: weeks.map((w) => w.cancelledUnreviewed),
-    enrichmentCompliance: weeks.map((w) => w.enrichmentCompliance),
-    regionConversionRate: weeks.map((w) => w.regionConversionRate),
+    commentCompliance: weeks.map((w) => w.commentCompliance),
+    zoneConversionRate: weeks.map((w) => w.zoneConversionRate),
   };
+}
+
+// Time to Contact stats (GM)
+export function getTimeToContactStats() {
+  const latest = weeklyTrends.gm[weeklyTrends.gm.length - 1];
+  return latest.timeToContact;
+}
+
+// Contact source stats (GM)
+export function getContactSourceStats() {
+  const latest = weeklyTrends.gm[weeklyTrends.gm.length - 1];
+  return { branchContactRate: latest.branchContactRate, hrdContactRate: latest.hrdContactRate };
+}
+
+// Org hierarchy lookup by branch
+export function getHierarchyForBranch(branch) {
+  return orgMapping.find((r) => r.branch === branch) || null;
+}
+
+// Insurance companies for filter
+export function getInsuranceCompanies() {
+  return [...new Set(leads.map((l) => l.insuranceCompany).filter(Boolean))].sort();
 }

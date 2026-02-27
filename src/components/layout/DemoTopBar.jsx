@@ -1,4 +1,10 @@
 import { useApp } from "../../context/AppContext";
+import { dataAsOfDate } from "../../data/mockData";
+
+function formatAsOfDate(isoDate) {
+  const d = new Date(isoDate + "T00:00:00");
+  return d.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
+}
 
 export default function DemoTopBar() {
   const { mode, setMode } = useApp();
@@ -9,6 +15,8 @@ export default function DemoTopBar() {
         <img src="/Hertz-Line_White_2020.png" alt="Hertz" className="h-7" />
         <span className="text-white/40 text-xs">|</span>
         <span className="text-white/70 text-sm">Lead Management System</span>
+        <span className="text-white/40 text-xs">|</span>
+        <span className="text-white/50 text-xs">Data as of: {formatAsOfDate(dataAsOfDate)}</span>
       </div>
 
       <div className="flex items-center bg-white/10 rounded-full p-0.5">

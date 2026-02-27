@@ -6,8 +6,8 @@ import { gmSteps } from "../walkthroughs/GeneralManagerSteps";
 import { adminSteps } from "../walkthroughs/AdminSteps";
 
 const walkthroughs = {
-  bm: { title: "Branch Manager — Weekly Lead Review", steps: bmSteps },
-  gm: { title: "General Manager — Compliance & Oversight", steps: gmSteps },
+  bm: { title: "Branch View — Weekly Lead Review", steps: bmSteps },
+  gm: { title: "Manager View — Compliance & Oversight", steps: gmSteps },
   admin: { title: "Admin — Data & Configuration", steps: adminSteps },
 };
 

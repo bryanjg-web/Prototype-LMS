@@ -29,7 +29,7 @@ export default function InteractiveEnrichmentForm({ lead }) {
       time: formatNow(),
       author: lead.bmName || "Branch Manager",
       role: "bm",
-      action: parts.length > 0 ? parts.join(" | ") : "Enrichment updated",
+      action: parts.length > 0 ? parts.join(" | ") : "Comment updated",
       notes: notes || "",
     };
 
@@ -49,7 +49,7 @@ export default function InteractiveEnrichmentForm({ lead }) {
       {/* Form */}
       <div className="space-y-5">
         <h4 className="text-xs font-semibold text-[#6E6E6E] uppercase tracking-wide">
-          New Enrichment Entry
+          Add Comment
         </h4>
 
         <div>
@@ -118,7 +118,7 @@ export default function InteractiveEnrichmentForm({ lead }) {
             onClick={handleSave}
             className="px-4 py-2 bg-[#F5C400] text-[#1A1A1A] rounded text-sm font-medium hover:bg-[#e0b200] transition-colors cursor-pointer"
           >
-            Save Enrichment
+            Save Comment
           </button>
           {isSaved && (
             <motion.span

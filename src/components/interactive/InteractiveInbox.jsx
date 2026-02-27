@@ -50,7 +50,7 @@ export default function InteractiveInbox() {
                 <div className="flex items-center gap-2">
                   <StatusBadge status={lead.status} />
                   {!lead.enrichmentComplete && (
-                    <span className="text-xs text-[#C62828] font-medium">Needs enrichment</span>
+                    <span className="text-xs text-[#C62828] font-medium">Needs comments</span>
                   )}
                 </div>
               </div>

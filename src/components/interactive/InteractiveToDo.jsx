@@ -23,11 +23,11 @@ export default function InteractiveToDo() {
         </span>
       </div>
       <p className="text-sm text-[#6E6E6E] mb-4">
-        Cancelled and unused leads that still need enrichment.
+        Cancelled and unused leads that still need comments.
       </p>
       {todoLeads.length === 0 ? (
         <div className="text-center py-12 text-[#6E6E6E]">
-          All caught up — no leads need enrichment.
+          All caught up — no leads need comments.
         </div>
       ) : (
         <LeadQueue leads={todoLeads} onLeadClick={handleLeadClick} />

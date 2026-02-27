@@ -63,7 +63,7 @@ export default function ThreeColumnReview({ lead, showMismatchWarning = false })
           className="border border-[#E6E6E6] rounded-lg p-4"
         >
           <h3 className="text-xs font-semibold text-[#6E6E6E] uppercase tracking-wide mb-3">
-            BM Enrichment
+            BM Comments
           </h3>
           {lead.enrichment?.reason ? (
             <div className="space-y-2 text-sm">
@@ -73,7 +73,7 @@ export default function ThreeColumnReview({ lead, showMismatchWarning = false })
               )}
             </div>
           ) : (
-            <p className="text-sm text-[#6E6E6E] italic">No enrichment recorded</p>
+            <p className="text-sm text-[#6E6E6E] italic">No comments recorded</p>
           )}
         </motion.div>
       </div>
