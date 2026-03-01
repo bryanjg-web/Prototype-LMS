@@ -1,5 +1,5 @@
-import { AppProvider, useApp } from "./context/AppContext";
-import { AuthProvider, useAuth } from "./context/AuthContext";
+import { useApp } from "./context/AppContext";
+import { useAuth } from "./context/AuthContext";
 import { DataProvider } from "./context/DataContext";
 import AppLayout from "./components/layout/AppLayout";
 import JourneyMode from "./components/JourneyMode";
@@ -32,12 +32,8 @@ function AppRoot() {
 
 export default function App() {
   return (
-    <AppProvider>
-      <AuthProvider>
-        <DataProvider>
-          <AppRoot />
-        </DataProvider>
-      </AuthProvider>
-    </AppProvider>
+    <DataProvider>
+      <AppRoot />
+    </DataProvider>
   );
 }

@@ -64,7 +64,7 @@ export function formatLocalDisplay(countryCode, local) {
 
 const SORTED_COUNTRY_CODES = [...COUNTRY_CODES].sort((a, b) => a.code.localeCompare(b.code));
 
-export default function PhoneInput({ value, onChange, placeholder = "555 123 4567", showHint = true, showWarning = false }) {
+export default function PhoneInput({ value, onChange, placeholder = "555 123 4567", showHint = true, showIncomplete = false }) {
   const parsed = parsePhoneE164(value ?? "");
   const countryCode = parsed.countryCode;
   const local = parsed.local;
@@ -86,7 +86,7 @@ export default function PhoneInput({ value, onChange, placeholder = "555 123 456
           value={countryCode}
           onChange={handleCountryChange}
           className={`shrink-0 min-w-[200px] border rounded px-3 py-2 text-sm bg-white focus:border-[var(--hertz-primary)] focus:outline-none ${
-            showWarning ? "border-[var(--color-warning)]/50" : "border-[var(--neutral-200)]"
+            showIncomplete ? "border-[var(--hertz-primary)] animate-hertz-pulse" : "border-[var(--neutral-200)]"
           }`}
           aria-label="Country code"
         >
@@ -103,7 +103,7 @@ export default function PhoneInput({ value, onChange, placeholder = "555 123 456
           onChange={handleLocalChange}
           placeholder={placeholder}
           className={`flex-1 min-w-0 border rounded px-3 py-2 text-sm bg-white focus:border-[var(--hertz-primary)] focus:outline-none ${
-            showWarning ? "border-[var(--color-warning)]/50" : "border-[var(--neutral-200)]"
+            showIncomplete ? "border-[var(--hertz-primary)] animate-hertz-pulse" : "border-[var(--neutral-200)]"
           }`}
           aria-label="Phone number"
         />

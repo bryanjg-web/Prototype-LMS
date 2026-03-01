@@ -7,6 +7,7 @@ import { createContext, useContext, useState, useEffect, useCallback } from "rea
 import { leads as mockLeads } from "../data/mockData";
 import {
   fetchLeads,
+  fetchUploadSummary,
   updateLeadEnrichment as apiUpdateLeadEnrichment,
   updateLeadContact as apiUpdateLeadContact,
   fetchLeadActivities as apiFetchLeadActivities,
@@ -16,6 +17,7 @@ import {
   updateTaskStatus as apiUpdateTaskStatus,
   appendTaskNote as apiAppendTaskNote,
 } from "../data/supabaseData";
+import { dataAsOfDate as mockDataAsOfDate } from "../data/mockData";
 
 const DataContext = createContext(null);
 
@@ -41,14 +43,42 @@ function saveLeadsToStorage(leads) {
   }
 }
 
+/** Ensure Maria Santos (Santa Monica) is a mismatch demo lead for Meeting Prep. Patches stored data that may have old values. */
+function ensureMismatchDemoLead(leads) {
+  if (!Array.isArray(leads)) return leads;
+  const maria = leads.find((l) => l.reservationId === "HL-2026-001243" || l.id === 10);
+  if (!maria) return leads;
+  if (maria.mismatch && (maria.weekOf === "2026-02-16" || maria.week_of === "2026-02-16")) return leads;
+  return leads.map((l) => {
+    if (l.reservationId !== "HL-2026-001243" && l.id !== 10) return l;
+    return {
+      ...l,
+      mismatch: true,
+      mismatchReason: "HLES says 'Unable to reach' but TRANSLOG shows 2 contact attempts. Add clarifying notes before the meeting.",
+      weekOf: "2026-02-16",
+      week_of: "2026-02-16",
+    };
+  });
+}
+
 export function DataProvider({ children }) {
   const [leads, setLeads] = useState(() => {
     if (USE_SUPABASE) return [];
     const stored = loadLeadsFromStorage();
-    return stored ?? [...mockLeads];
+    const initial = stored ?? [...mockLeads];
+    return ensureMismatchDemoLead(initial);
   });
   const [loading, setLoading] = useState(USE_SUPABASE);
   const [error, setError] = useState(null);
+  const [dataAsOfDate, setDataAsOfDate] = useState(USE_SUPABASE ? null : mockDataAsOfDate);
+
+  // Fetch upload summary (data-as-of date) when using Supabase
+  useEffect(() => {
+    if (!USE_SUPABASE) return;
+    fetchUploadSummary()
+      .then(({ dataAsOfDate: d }) => setDataAsOfDate(d ?? null))
+      .catch(() => setDataAsOfDate(null));
+  }, [USE_SUPABASE]);
 
   // Persist leads to localStorage whenever they change (mock mode only)
   useEffect(() => {
@@ -180,6 +210,7 @@ export function DataProvider({ children }) {
     leads,
     loading,
     error,
+    dataAsOfDate,
     refetchLeads,
     updateLeadEnrichment,
     updateLeadContact,

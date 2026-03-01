@@ -34,7 +34,7 @@ function FilterBar({ bmFilter, setBmFilter, branchFilter, setBranchFilter, gmFil
     "px-3 py-1.5 border border-[#E6E6E6] rounded text-sm text-[#1A1A1A] bg-white focus:outline-none focus:border-[#FFD100]";
 
   return (
-    <div className="flex items-center gap-3 flex-wrap">
+    <div className="flex items-center gap-3 flex-nowrap overflow-x-auto">
       <label className="text-xs text-[#6E6E6E] font-medium">Branch Manager</label>
       <select className={selectClass} value={bmFilter} onChange={(e) => setBmFilter(e.target.value)}>
         <option>All</option>

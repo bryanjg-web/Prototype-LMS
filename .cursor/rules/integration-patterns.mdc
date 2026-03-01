@@ -1,0 +1,58 @@
+---
+description: Supabase, edge functions, and activity logging integration patterns
+alwaysApply: true
+---
+
+# Integration Patterns
+
+## Supabase Edge Functions
+
+### Silent Error Anti-Pattern (caused 3 bugs)
+Always check the `{ error }` return from Supabase operations. This was missed in all 3 edge functions:
+
+```javascript
+// BAD — fire-and-forget, fails silently
+await supabase.from("lead_activities").insert({ ... });
+
+// GOOD — check and surface errors
+const { error: insertErr } = await supabase.from("lead_activities").insert({ ... });
+if (insertErr) console.error("Activity insert failed:", insertErr);
+```
+
+### Deployment Gotchas
+- `npx supabase functions deploy <name>` **resets** the `--no-verify-jwt` flag. Always redeploy with `--no-verify-jwt` if the function is called without JWT.
+- Use `npx supabase` (npm package) if the Homebrew CLI isn't installed.
+- Edge functions use `import { createClient } from "npm:@supabase/supabase-js@2"` (Deno `npm:` specifier).
+- Add `{ auth: { persistSession: false } }` to `createClient` in edge functions.
+- `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` are auto-injected in deployed functions.
+
+## Activity Logging Pattern
+
+Activities (email, SMS, call, enrichment changes) persist in `lead_activities` table:
+
+```
+{ lead_id, type, performed_by, performed_by_name, metadata (JSONB), created_at }
+```
+
+- `performed_by` is nullable (FK to `auth.users`) — pass `userProfile?.id` from frontend
+- `metadata` stores external IDs (Twilio SID, Resend ID) and diff data (previous/updated values)
+- Frontend calls `fetchLeadActivities(leadId)` to refresh after any contact action
+- Edge functions insert the activity **after** the external API call succeeds
+
+## Enrichment Change Tracking
+
+When contact details are updated, log both previous and new values:
+
+```javascript
+metadata: {
+  previous: { email: prevEmail, phone: prevPhone },
+  updated: { email: newEmail, phone: newPhone },
+  changes: ["email", "phone"]
+}
+```
+
+`TranslogTimeline` renders these as expandable diff entries (click to see before/after).
+
+## snake_case ↔ camelCase Mapping
+
+Database uses `snake_case`. App uses `camelCase`. All mapping happens in `supabaseData.js` via `leadFromRow()`, `taskFromRow()`, etc. When adding new DB columns, always update the relevant mapper function.

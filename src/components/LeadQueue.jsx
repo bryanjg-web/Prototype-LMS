@@ -42,6 +42,7 @@ export default function LeadQueue({
   highlightId = null,
   enrichedIds = [],
   bannerCount = null,
+  mismatchCount = null,
   onLeadClick = null,
 }) {
   return (
@@ -53,6 +54,16 @@ export default function LeadQueue({
           className="mb-4 px-4 py-2 bg-amber-50 border border-amber-200 rounded text-sm text-[#1A1A1A]"
         >
           <span className="font-semibold text-[#FFD100]">{bannerCount}</span> lead{bannerCount !== 1 ? "s" : ""} need comments
+        </motion.div>
+      )}
+      {mismatchCount !== null && mismatchCount > 0 && (
+        <motion.div
+          initial={{ opacity: 0, y: -10 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="mb-4 px-4 py-2 bg-amber-50 border border-amber-300 rounded text-sm text-[#1A1A1A]"
+        >
+          <span className="font-semibold text-amber-700">⚠</span>{" "}
+          <span className="font-semibold">{mismatchCount}</span> lead{mismatchCount !== 1 ? "s" : ""} with data mismatch{mismatchCount !== 1 ? "es" : ""} — address before your GM meeting
         </motion.div>
       )}
 
@@ -96,7 +107,19 @@ export default function LeadQueue({
                   <td className="px-4 py-3 text-[#6E6E6E] font-mono text-xs">{lead.reservationId}</td>
                   <td className="px-4 py-3 text-[#6E6E6E] text-xs">{lead.reservationType || "—"}</td>
                   <td className="px-4 py-3 text-[#6E6E6E] font-mono text-xs">{lead.cdp || "—"}</td>
-                  <td className="px-4 py-3"><StatusBadge status={lead.status} /></td>
+                  <td className="px-4 py-3">
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <StatusBadge status={lead.status} />
+                      {lead.mismatch && (
+                        <span
+                          className="px-2 py-0.5 rounded text-xs font-medium bg-amber-100 text-amber-800 border border-amber-200"
+                          title="Data mismatch — HLES, TRANSLOG, and BM comments don't align"
+                        >
+                          Mismatch
+                        </span>
+                      )}
+                    </div>
+                  </td>
                   <td className="px-4 py-3">{lead.daysOpen}</td>
                   <td className="px-4 py-3">{lead.timeToFirstContact}</td>
                   <td className={`px-4 py-3 ${isStale ? "text-[#C62828] font-medium" : "text-[#6E6E6E]"}`}>

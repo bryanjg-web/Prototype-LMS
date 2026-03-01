@@ -58,5 +58,5 @@ insert into public.tasks (
   created_by_name, assigned_to_name
 ) values
   ('Follow up on John Martinez lead', 'Customer no-show — call again before Friday', null, '2026-02-28', 'Open', 'High', 2, 'gm_assigned', 'D. Williams', 'Sarah Chen'),
-  ('Add comments to Michael Torres cancellation', 'Enrichment overdue — add reason and next action', 'Called twice, left voicemail. Will try again tomorrow.', '2026-02-27', 'In Progress', 'Normal', 3, 'gm_assigned', 'D. Williams', 'Sarah Chen'),
-  ('Review Emily Davis unused lead', '8 days open with no contact — escalate if needed', null, '2026-03-01', 'Open', 'Urgent', 4, 'gm_assigned', 'D. Williams', 'T. Rodriguez');
+  ('Add comments to Michael Torres cancellation', 'Enrichment overdue — add reason and next action', 'Called twice, left voicemail. Will try again tomorrow.', '2026-02-27', 'In Progress', 'Medium', 3, 'gm_assigned', 'D. Williams', 'Sarah Chen'),
+  ('Review Emily Davis unused lead', '8 days open with no contact — escalate if needed', null, '2026-03-01', 'Open', 'High', 4, 'gm_assigned', 'D. Williams', 'T. Rodriguez');

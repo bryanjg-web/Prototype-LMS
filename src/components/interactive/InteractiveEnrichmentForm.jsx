@@ -25,7 +25,7 @@ function formatDateForInput(dateStr) {
 export default function InteractiveEnrichmentForm({ lead }) {
   const { userProfile } = useAuth();
   const { role } = useApp();
-  const { updateLeadEnrichment } = useData();
+  const { updateLeadEnrichment, refetchLeads } = useData();
 
   const existing = lead.enrichment || {};
   const [status, setStatus] = useState(lead.status || "Unused");
@@ -124,6 +124,7 @@ export default function InteractiveEnrichmentForm({ lead }) {
     setSaveError(null);
     try {
       await updateLeadEnrichment(lead.id, enrichment, newEntry, status);
+      await refetchLeads?.();
       setIsSaved(true);
       setTimeout(() => setIsSaved(false), 2000);
       if (notes?.trim()) {
@@ -185,7 +186,9 @@ export default function InteractiveEnrichmentForm({ lead }) {
               value={reason}
               onChange={(e) => { setReason(e.target.value); clearError(); }}
               className={`w-full border rounded px-3 py-2 text-sm bg-white focus:border-[#FFD100] focus:outline-none ${
-                saveError && !reason?.trim() ? "border-[var(--color-error)]/50" : "border-[#E6E6E6]"
+                showCancellationReason && !reason?.trim()
+                  ? "border-[var(--hertz-primary)] animate-hertz-pulse"
+                  : "border-[#E6E6E6]"
               }`}
             >
               <option value="">Select a reason...</option>
@@ -210,7 +213,9 @@ export default function InteractiveEnrichmentForm({ lead }) {
               onChange={(e) => { setNextAction(e.target.value); clearError(); }}
               disabled={status === "Rented"}
               className={`w-full border rounded px-3 py-2 text-sm bg-white focus:border-[#FFD100] focus:outline-none disabled:bg-[var(--neutral-50)] disabled:cursor-not-allowed ${
-                saveError && !nextAction?.trim() && status !== "Rented" ? "border-[var(--color-error)]/50" : "border-[#E6E6E6]"
+                showNextAction && !nextAction?.trim() && status !== "Rented"
+                  ? "border-[var(--hertz-primary)] animate-hertz-pulse"
+                  : "border-[#E6E6E6]"
               }`}
             >
               <option value="">Select next action...</option>
@@ -235,7 +240,9 @@ export default function InteractiveEnrichmentForm({ lead }) {
               value={followUpDate}
               onChange={(e) => { setFollowUpDate(e.target.value); clearError(); }}
               className={`w-full border rounded px-3 py-2 text-sm bg-white focus:border-[#FFD100] focus:outline-none ${
-                saveError && !followUpDate?.trim() ? "border-[var(--color-error)]/50" : "border-[#E6E6E6]"
+                showFollowUpDate && !followUpDate?.trim()
+                  ? "border-[var(--hertz-primary)] animate-hertz-pulse"
+                  : "border-[#E6E6E6]"
               }`}
             />
           </motion.div>
@@ -263,10 +270,7 @@ export default function InteractiveEnrichmentForm({ lead }) {
           >
             {saving ? "Saving…" : "Update Lead"}
           </button>
-          {saveError && (
-            <span className="text-sm text-[var(--color-error)]">{saveError}</span>
-          )}
-          {isSaved && !saveError && (
+          {isSaved && (
             <motion.span
               initial={{ opacity: 0, scale: 0.8 }}
               animate={{ opacity: 1, scale: 1 }}

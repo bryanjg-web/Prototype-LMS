@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { useApp } from "../../context/AppContext";
 import InteractiveDashboard from "./InteractiveDashboard";
@@ -8,20 +9,24 @@ import InteractiveLegend from "./InteractiveLegend";
 import InteractiveThreeColumn from "./InteractiveThreeColumn";
 import ProfileView from "../ProfileView";
 import InteractiveTaskDetail from "./InteractiveTaskDetail";
+import InteractiveMeetingPrepPage from "./InteractiveMeetingPrepPage";
+import InteractiveLeaderboardPage from "./InteractiveLeaderboardPage";
+import InteractiveGMLeadsPage from "./InteractiveGMLeadsPage";
+import InteractiveGMLeaderboardPage from "./InteractiveGMLeaderboardPage";
 
 const viewComponents = {
+  "bm-home": InteractiveDashboard,
   "bm-dashboard": InteractiveDashboard,
   "bm-leads": InteractiveDashboard,
   "bm-todo": InteractiveDashboard,
   "bm-lead-detail": InteractiveLeadDetail,
   "bm-task-detail": InteractiveTaskDetail,
+  "bm-meeting-prep": InteractiveMeetingPrepPage,
+  "bm-leaderboard": InteractiveLeaderboardPage,
   "gm-dashboard": InteractiveDashboard,
   "gm-compliance": InteractiveDashboard,
-  "gm-cancelled": InteractiveDashboard,
-  "gm-unused": InteractiveDashboard,
-  "gm-review": InteractiveDashboard,
-  "gm-spot-check": InteractiveDashboard,
-  "gm-review-detail": InteractiveThreeColumn,
+  "gm-leads": InteractiveGMLeadsPage,
+  "gm-leaderboard": InteractiveGMLeaderboardPage,
   "admin-dashboard": InteractiveDashboard,
   "admin-uploads": InteractiveUploads,
   "admin-org-mapping": InteractiveOrgMapping,
@@ -30,20 +35,26 @@ const viewComponents = {
 };
 
 // Views that share the same scrollable page - use stable key to avoid remount/refresh
-const SECTION_VIEW_KEYS = {
-  bm: ["bm-dashboard", "bm-leads", "bm-todo"], // bm-task-detail is drill-down, separate key
-  gm: ["gm-dashboard", "gm-compliance", "gm-cancelled", "gm-unused", "gm-review", "gm-spot-check"],
-};
+// Meeting Prep and Leaderboard are separate pages; Summary (dashboard) has Home, Work, My Leads + Open Tasks
+const BM_MAIN_VIEWS = ["bm-home", "bm-dashboard", "bm-leads", "bm-todo"];
+const GM_MAIN_VIEWS = ["gm-dashboard", "gm-compliance"];
 
 function getShellKey(activeView) {
-  if (SECTION_VIEW_KEYS.bm.includes(activeView)) return "bm-main";
-  if (SECTION_VIEW_KEYS.gm.includes(activeView)) return "gm-main";
+  if (BM_MAIN_VIEWS.includes(activeView)) return "bm-main";
+  if (GM_MAIN_VIEWS.includes(activeView)) return "gm-main";
   return activeView;
 }
 
 export default function InteractiveShell() {
   const { activeView } = useApp();
   const ViewComponent = viewComponents[activeView];
+
+  // Scroll to top when shell mounts (e.g. after login, refresh)
+  useEffect(() => {
+    window.scrollTo(0, 0);
+    const root = document.getElementById("dashboard-scroll-root");
+    if (root) root.scrollTo(0, 0);
+  }, []);
 
   if (!ViewComponent) {
     return (
@@ -63,7 +74,7 @@ export default function InteractiveShell() {
         transition={{ duration: 0.3, ease: [0.4, 0, 0.2, 1] }}
         className="h-full"
       >
-        <div id="dashboard-scroll-root" className="px-8 py-8 lg:px-12 lg:py-10 h-full overflow-auto bg-[var(--neutral-50)]">
+        <div id="dashboard-scroll-root" className="px-8 py-4 lg:px-12 lg:py-4 h-full min-h-0 overflow-y-auto overscroll-none bg-[var(--neutral-50)]">
           <ViewComponent />
         </div>
       </motion.div>

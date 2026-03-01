@@ -448,7 +448,7 @@ SELECT
 FROM (VALUES
   ('Follow up on Diana Patel cancellation',
    'No BM comments despite 7-day-old cancelled lead — enrichment required',
-   null, '2026-03-01', 'Open', 'Urgent',
+   null, '2026-03-01', 'Open', 'High',
    'HL-2026-001249', 'gm_assigned', 'D. Williams', 'J. Smith'),
   ('Contact Jessica Ruiz — disconnected number',
    'Phone disconnected — try alternate contact or escalate',
@@ -456,15 +456,15 @@ FROM (VALUES
    'HL-2026-001261', 'gm_assigned', 'D. Williams', 'T. Brown'),
   ('Review Elijah Gray mismatch',
    '9 days open — wrong number on file, needs resolution',
-   null, '2026-02-27', 'Open', 'Urgent',
+   null, '2026-02-27', 'Open', 'High',
    'HL-2026-001276', 'gm_assigned', 'R. Martinez', 'C. Anderson'),
   ('Enrich Julia Sanders lead',
    '10 days with no enrichment — number not in service',
-   null, '2026-02-28', 'Open', 'Urgent',
+   null, '2026-02-28', 'Open', 'High',
    'HL-2026-001291', 'gm_assigned', 'R. Martinez', 'G. Clark'),
   ('Follow up Laura Fernandez voicemail',
    'HRD contacted first — branch needs to take over follow-up',
-   'Left two voicemails so far, no response.', '2026-03-01', 'In Progress', 'Normal',
+   'Left two voicemails so far, no response.', '2026-03-01', 'In Progress', 'Medium',
    'HL-2026-001283', 'gm_assigned', 'R. Martinez', 'B. Jackson')
 ) AS t(title, description, notes, due_date, status, priority, res_id, source, created_by_name, assigned_to_name)
 JOIN public.leads l ON l.reservation_id = t.res_id;

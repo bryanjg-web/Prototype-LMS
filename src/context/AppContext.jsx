@@ -8,6 +8,7 @@ const initialState = {
   role: null,
   activeView: null,
   scrollActiveView: null,
+  scrollDirection: null, // "up" | "down" | null — for sidebar chevron behavior
   selectedLeadId: null,
   selectedTaskId: null,
   sidebarCollapsed: false,
@@ -45,6 +46,8 @@ function reducer(state, action) {
       return { ...state, activeView: action.payload, scrollActiveView: null };
     case "SET_SCROLL_ACTIVE_VIEW":
       return { ...state, scrollActiveView: action.payload };
+    case "SET_SCROLL_DIRECTION":
+      return { ...state, scrollDirection: action.payload };
     case "SELECT_LEAD":
       return { ...state, selectedLeadId: action.payload };
     case "SELECT_TASK":
@@ -72,6 +75,7 @@ export function AppProvider({ children }) {
   const setRole = useCallback((role) => dispatch({ type: "SET_ROLE", payload: role }), []);
   const navigateTo = useCallback((view) => dispatch({ type: "NAVIGATE_TO", payload: view }), []);
   const setScrollActiveView = useCallback((view) => dispatch({ type: "SET_SCROLL_ACTIVE_VIEW", payload: view }), []);
+  const setScrollDirection = useCallback((dir) => dispatch({ type: "SET_SCROLL_DIRECTION", payload: dir }), []);
   const selectLead = useCallback((id) => dispatch({ type: "SELECT_LEAD", payload: id }), []);
   const selectTask = useCallback((id) => dispatch({ type: "SELECT_TASK", payload: id }), []);
   const setJourneyStarted = useCallback((v) => dispatch({ type: "SET_JOURNEY_STARTED", payload: v }), []);
@@ -86,6 +90,7 @@ export function AppProvider({ children }) {
         setRole,
         navigateTo,
         setScrollActiveView,
+        setScrollDirection,
         selectLead,
         selectTask,
         setJourneyStarted,

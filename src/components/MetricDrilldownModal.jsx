@@ -9,8 +9,12 @@ import {
   formatMinutesToDisplay,
   parseTimeToMinutes,
   getLeadById,
+  getBranchVsHrdSplit,
+  getConversionBreakdown,
 } from "../selectors/demoSelectors";
 import StatusBadge from "./StatusBadge";
+import GroupBySelector from "./GroupBySelector";
+import ConversionBreakdownTable from "./ConversionBreakdownTable";
 
 function formatRange(range) {
   if (!range?.start || !range?.end) return "—";
@@ -91,6 +95,59 @@ const METRIC_CONFIG = {
     getRelevant: (leads) => leads.filter((l) => parseTimeToMinutes(l.timeToFirstContact) != null),
     lowerIsBetter: true,
   },
+  contacted_within_30_min: {
+    label: "Contacted within 30 min",
+    type: "leads",
+    description: "Percentage of leads with first contact within 30 minutes of lead creation",
+    getValue: (leads) => {
+      const list = leads ?? [];
+      if (list.length === 0) return null;
+      const within30 = list.filter((l) => (l.contactRange ?? l.contact_range) === "(a)<30min").length;
+      return Math.round((within30 / list.length) * 100);
+    },
+    format: (v) => (v != null ? `${v}%` : "—"),
+    getRelevant: (leads) => leads,
+    numeratorLabel: "Within 30 min",
+    numeratorFilter: (l) => (l.contactRange ?? l.contact_range) === "(a)<30min",
+    denominatorLabel: "Total",
+    extraColumn: { label: "Contact Range", getValue: (l) => l.contactRange ?? l.contact_range ?? "—" },
+  },
+  branch_vs_hrd_split: {
+    label: "Branch vs. HRD split",
+    type: "leads",
+    description: "Percentage of first contacts made by Branch (vs. HRD)",
+    getValue: (leads) => {
+      const { branch: branchCount, hrd } = getBranchVsHrdSplit(leads);
+      const total = branchCount + hrd;
+      return total ? Math.round((branchCount / total) * 100) : null;
+    },
+    format: (v) => (v != null ? `${v}% Branch` : "—"),
+    getRelevant: (leads) =>
+      leads.filter((l) => {
+        const by = l.firstContactBy ?? l.first_contact_by;
+        return by === "branch" || by === "hrd";
+      }),
+    numeratorLabel: "Branch",
+    numeratorFilter: (l) => (l.firstContactBy ?? l.first_contact_by) === "branch",
+    denominatorLabel: "With contact",
+    extraColumn: { label: "First Contact By", getValue: (l) => l.firstContactBy ?? l.first_contact_by ?? "—" },
+  },
+  meeting_prep_comment_rate: {
+    label: "Comment rate",
+    type: "leads",
+    description: "Percentage of Cancelled/Unused leads with reason or notes",
+    getValue: (leads) => {
+      const actionable = (leads ?? []).filter((l) => l.status === "Cancelled" || l.status === "Unused");
+      if (actionable.length === 0) return null;
+      const withComments = actionable.filter((l) => l.enrichment?.reason || l.enrichment?.notes);
+      return Math.round((withComments.length / actionable.length) * 100);
+    },
+    format: (v) => (v != null ? `${v}%` : "—"),
+    getRelevant: (leads) => (leads ?? []).filter((l) => l.status === "Cancelled" || l.status === "Unused"),
+    numeratorLabel: "With comments",
+    numeratorFilter: (l) => !!(l.enrichment?.reason || l.enrichment?.notes),
+    denominatorLabel: "Cancelled/Unused",
+  },
 };
 
 function ComparisonCards({ config, currentValue, previousValue, currentRange, previousRange, currentCount, previousCount }) {
@@ -147,6 +204,8 @@ function ComparisonCards({ config, currentValue, previousValue, currentRange, pr
 
 function LeadTable({ leads, config, allLeads }) {
   const showHighlight = !!config.numeratorFilter;
+  const extraCol = config.extraColumn;
+  const colCount = 7 + (showHighlight ? 1 : 0) + (extraCol ? 1 : 0);
   return (
     <div className="border border-[var(--neutral-200)] rounded-lg overflow-hidden">
       <div className="overflow-x-auto max-h-[45vh]">
@@ -159,6 +218,7 @@ function LeadTable({ leads, config, allLeads }) {
               <th className="px-3 py-3 text-center">Status</th>
               <th className="px-3 py-3 text-center">Days Open</th>
               <th className="px-3 py-3 text-center">Time to Contact</th>
+              {extraCol && <th className="px-3 py-3 text-center">{extraCol.label}</th>}
               <th className="px-3 py-3 text-left">Cancel Reason</th>
               <th className="px-3 py-3 text-left">Comments</th>
             </tr>
@@ -166,7 +226,7 @@ function LeadTable({ leads, config, allLeads }) {
           <tbody>
             {leads.length === 0 ? (
               <tr>
-                <td colSpan={showHighlight ? 8 : 7} className="px-3 py-12 text-center text-[var(--neutral-600)]">
+                <td colSpan={colCount} className="px-3 py-12 text-center text-[var(--neutral-600)]">
                   No leads in this period
                 </td>
               </tr>
@@ -198,6 +258,9 @@ function LeadTable({ leads, config, allLeads }) {
                     <td className="px-3 py-3 text-center"><StatusBadge status={lead.status} /></td>
                     <td className="px-3 py-3 text-center text-[var(--neutral-600)]">{lead.daysOpen ?? "—"}</td>
                     <td className="px-3 py-3 text-center text-[var(--neutral-600)]">{lead.timeToFirstContact ?? "—"}</td>
+                    {extraCol && (
+                      <td className="px-3 py-3 text-center text-[var(--neutral-600)]">{extraCol.getValue(lead)}</td>
+                    )}
                     <td className="px-3 py-3 text-[var(--neutral-600)] max-w-[150px] truncate">{lead.hlesReason ?? "—"}</td>
                     <td className="px-3 py-3 text-[var(--neutral-600)] max-w-[180px] truncate" title={lead.enrichment?.reason ?? lead.enrichment?.notes ?? ""}>
                       {lead.enrichment?.reason ?? lead.enrichment?.notes ?? "—"}
@@ -276,10 +339,9 @@ function TaskTable({ tasks, config, allLeads }) {
                     </td>
                     <td className="px-3 py-3 text-center">
                       <span className={`px-2 py-0.5 rounded text-xs font-semibold ${
-                        task.priority === "Urgent" ? "bg-[#C62828]/15 text-[#C62828]" :
                         task.priority === "High" ? "bg-amber-100 text-amber-800" :
                         "bg-[var(--neutral-100)] text-[var(--neutral-600)]"
-                      }`}>{task.priority ?? "Normal"}</span>
+                      }`}>{task.priority ?? "Medium"}</span>
                     </td>
                     <td className="px-3 py-3 text-center text-[var(--neutral-600)] whitespace-nowrap">{task.dueDate ?? "—"}</td>
                     <td className="px-3 py-3 text-center text-[var(--neutral-600)]">{task.createdBy ?? "—"}</td>
@@ -296,6 +358,10 @@ function TaskTable({ tasks, config, allLeads }) {
 
 export default function MetricDrilldownModal({ metricKey, onClose, leads, branchTasks, dateRange, comparisonRange, branch }) {
   const [activeTab, setActiveTab] = useState("current");
+  const [groupByPrimary, setGroupByPrimary] = useState(null);
+  const [groupBySecondary, setGroupBySecondary] = useState(null);
+  const [showBenchmarks, setShowBenchmarks] = useState(false);
+  const [includeReviewed, setIncludeReviewed] = useState(false);
 
   const config = METRIC_CONFIG[metricKey];
   if (!config) return null;
@@ -339,6 +405,31 @@ export default function MetricDrilldownModal({ metricKey, onClose, leads, branch
       }
     : { numerator: 0, denominator: 0 };
 
+  const showConversionBreakdown = metricKey === "conversion_rate" && isLeadMetric;
+  const conversionBreakdown = useMemo(
+    () =>
+      showConversionBreakdown
+        ? getConversionBreakdown(leads ?? [], {
+            dateRange: activeTab === "current" ? dateRange : comparisonRange,
+            branch,
+            groupByPrimary: groupByPrimary || undefined,
+            groupBySecondary: groupBySecondary || undefined,
+            includeReviewed,
+          })
+        : { rows: [], zoneBenchmark: null },
+    [
+      showConversionBreakdown,
+      leads,
+      activeTab,
+      dateRange,
+      comparisonRange,
+      branch,
+      groupByPrimary,
+      groupBySecondary,
+      includeReviewed,
+    ],
+  );
+
   return (
     <motion.div
       initial={{ opacity: 0 }}
@@ -377,6 +468,50 @@ export default function MetricDrilldownModal({ metricKey, onClose, leads, branch
             currentCount={currentCount}
             previousCount={previousCount}
           />
+
+          {/* Conversion breakdown (conversion_rate only) */}
+          {showConversionBreakdown && (
+            <div className="mb-5">
+              <p className="text-xs font-bold text-[var(--neutral-600)] uppercase tracking-wide mb-3">
+                Breakdown by group
+              </p>
+              <div className="flex flex-wrap items-center gap-4 mb-3">
+                <GroupBySelector
+                  primary={groupByPrimary}
+                  secondary={groupBySecondary}
+                  onPrimaryChange={(v) => {
+                    setGroupByPrimary(v);
+                    if (!v) setGroupBySecondary(null);
+                  }}
+                  onSecondaryChange={setGroupBySecondary}
+                />
+                <label className="flex items-center gap-2 text-sm text-[var(--neutral-600)]">
+                  <input
+                    type="checkbox"
+                    checked={showBenchmarks}
+                    onChange={(e) => setShowBenchmarks(e.target.checked)}
+                    className="rounded border-[var(--neutral-300)]"
+                  />
+                  Show zone benchmarks
+                </label>
+                <label className="flex items-center gap-2 text-sm text-[var(--neutral-600)]">
+                  <input
+                    type="checkbox"
+                    checked={includeReviewed}
+                    onChange={(e) => setIncludeReviewed(e.target.checked)}
+                    className="rounded border-[var(--neutral-300)]"
+                  />
+                  Include Reviewed
+                </label>
+              </div>
+              <ConversionBreakdownTable
+                rows={conversionBreakdown.rows}
+                zoneBenchmark={conversionBreakdown.zoneBenchmark}
+                showBenchmarks={showBenchmarks}
+                groupByPrimary={groupByPrimary}
+              />
+            </div>
+          )}
 
           {/* Tab selector */}
           <div className="flex items-center gap-1 mb-4">

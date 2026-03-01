@@ -4,9 +4,9 @@ import StatusBadge from "./StatusBadge";
 
 const BAR_HEIGHT = 48;
 const SEGMENTS = [
-  { key: "rented", label: "Rented", color: "#2E7D32" },
-  { key: "cancelled", label: "Cancelled", color: "#C62828" },
-  { key: "unused", label: "Unused", color: "#FFD100" },
+  { key: "rented", label: "Rented", color: "var(--hertz-primary)" },
+  { key: "cancelled", label: "Cancelled", color: "var(--hertz-black)" },
+  { key: "unused", label: "Unused", color: "var(--neutral-600)" },
 ];
 
 function formatDate(isoStr) {

@@ -1,0 +1,39 @@
+---
+description: Architecture patterns for view composition, shell keys, and section maps
+alwaysApply: true
+---
+
+# Architecture Patterns
+
+## Page Composition — Decide Early, Change Never
+
+Each role view is either a **single scrollable page** (sections composed vertically) or **separate routed pages** (shell key per page). Mixing these caused 3+ cascading rewrites in BM.
+
+**BM final architecture:**
+- `BM_MAIN_VIEWS = ["bm-dashboard", "bm-leads", "bm-todo"]` → shared shell key `"bm-main"` (one scrollable page)
+- `bm-meeting-prep`, `bm-leaderboard` → own shell keys (separate page transitions)
+- `bm-lead-detail`, `bm-task-detail` → drill-down views with own shell keys
+
+**When adding GM views, lock this down first:**
+- Which GM views share a scroll page? (e.g., `gm-dashboard`, `gm-compliance`, `gm-cancelled-leads`)
+- Which GM views are separate pages? (e.g., `gm-review-detail`, `gm-spot-check`)
+- Update `GM_MAIN_VIEWS` in `InteractiveShell.jsx` accordingly
+
+## Shell Key Rules (`getShellKey`)
+
+- Views sharing a shell key share scroll position and don't remount on nav change
+- Views with different shell keys get full AnimatePresence transitions
+- **Never** add a view to `BM_MAIN_VIEWS` / `GM_MAIN_VIEWS` unless it's a section on the same scrollable page
+
+## Section Map Must Match DOM Order
+
+`BM_SECTION_MAP` / `GM_SECTION_MAP` in `InteractiveDashboard.jsx` maps view IDs to DOM section IDs. The key order in these maps **must** match the physical top-to-bottom DOM order — `Object.keys()` iteration order determines scroll highlight priority.
+
+## File Change Checklist for New Views
+
+Adding a new view requires synchronized changes across:
+1. `src/config/navigation.js` — `roleNav`, `drillDownViews`, `roleDefaults`
+2. `src/components/interactive/InteractiveShell.jsx` — view→component map, `MAIN_VIEWS` arrays
+3. `src/components/interactive/InteractiveDashboard.jsx` — section map, section JSX, IntersectionObserver
+4. `src/components/layout/Sidebar.jsx` — nav items, chevron groups, scroll-into-view
+5. `src/context/AppContext.jsx` — only if new state/actions needed

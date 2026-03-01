@@ -7,10 +7,9 @@ import { getTaskById, getLeadById } from "../../selectors/demoSelectors";
 
 const STATUS_OPTIONS = ["Open", "In Progress", "Done"];
 const PRIORITY_COLORS = {
-  Urgent: "bg-[var(--color-error)]/15 text-[var(--color-error)]",
   High: "bg-amber-100 text-amber-800",
-  Normal: "bg-[var(--neutral-100)] text-[var(--neutral-600)]",
-  Low: "bg-[var(--neutral-50)] text-[var(--neutral-500)]",
+  Medium: "bg-[var(--neutral-100)] text-[var(--neutral-600)]",
+  Low: "bg-[var(--neutral-100)] text-[var(--neutral-600)]",
 };
 const SOURCE_LABELS = { gm_assigned: "GM Assigned", auto_translog: "Auto (Translog)", auto_other: "Auto (Other)" };
 
@@ -158,7 +157,7 @@ export default function InteractiveTaskDetail() {
     );
   }
 
-  const priorityClass = PRIORITY_COLORS[task.priority] ?? PRIORITY_COLORS.Normal;
+  const priorityClass = PRIORITY_COLORS[task.priority] ?? PRIORITY_COLORS.Medium;
   const statusClass =
     task.status === "Done"
       ? "bg-[var(--color-success)]/15 text-[var(--color-success)]"

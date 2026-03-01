@@ -1,6 +1,22 @@
 @import "tailwindcss";
 @import "./styles/hertz-brand.css";
 
+@theme {
+  --animate-hertz-pulse: hertz-pulse 1.5s ease-in-out infinite;
+
+  @keyframes hertz-pulse {
+    0%, 100% {
+      border-color: var(--hertz-primary);
+      box-shadow: 0 0 0 2px rgba(255, 209, 0, 0.5);
+    }
+    50% {
+      border-color: var(--hertz-primary);
+      box-shadow: 0 0 0 6px rgba(255, 209, 0, 0.15);
+    }
+  }
+
+}
+
 html, body, #root {
   height: 100%;
   margin: 0;

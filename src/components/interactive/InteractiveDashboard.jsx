@@ -5,14 +5,10 @@ import { useAuth } from "../../context/AuthContext";
 import { useData } from "../../context/DataContext";
 import {
   getBMStats,
-  getGMStats,
   getBMTrends,
-  getGMTrends,
-  getTimeToContactStats,
-  getContactSourceStats,
   getDateRangePresets,
   getComparisonDateRange,
-  getChartData,
+  getSummaryDataWithChart,
   getLeadsForBranch,
   getTasksForBranch,
   getHierarchyForBranch,
@@ -24,18 +20,15 @@ import {
   getAverageTimeToContact,
   getAverageTimeToContactMinutes,
   tasksInDateRange,
-  getLeadsForBranchInRange,
 } from "../../selectors/demoSelectors";
-import { roleMeta, roleUsers } from "../../config/navigation";
+import { roleMeta, roleUsers, roleDefaults } from "../../config/navigation";
 import MiniBarChart from "../MiniBarChart";
-import LeadStackedBarChart from "../LeadStackedBarChart";
 import StatusBadge from "../StatusBadge";
 import LeadsBoardView from "../LeadsBoardView";
 import InteractiveComplianceDashboard from "./InteractiveComplianceDashboard";
-import InteractiveCancelledLeads from "./InteractiveCancelledLeads";
-import InteractiveUnusedLeads from "./InteractiveUnusedLeads";
-import InteractiveThreeColumn from "./InteractiveThreeColumn";
-import InteractiveSpotCheck from "./InteractiveSpotCheck";
+import InteractiveGMDashboard from "./InteractiveGMDashboard";
+import MeetingPrepModule from "../MeetingPrepModule";
+import LeaderboardModule from "../LeaderboardModule";
 import { DateRangeCalendar } from "../DateRangeCalendar";
 import MetricDrilldownModal from "../MetricDrilldownModal";
 import SummaryExportModal from "../SummaryExportModal";
@@ -48,273 +41,26 @@ const cardAnim = (i, reduced = false) => ({
   transition: { delay: reduced ? 0 : i * 0.06, duration: reduced ? 0.01 : 0.4, ease: easeOut },
 });
 
-function TrendsViewButton({ onOpen }) {
-  const reduceMotion = useReducedMotion();
-  return (
-    <motion.button
-      onClick={onOpen}
-      whileHover={!reduceMotion ? { scale: 1.03 } : {}}
-      whileTap={!reduceMotion ? { scale: 0.97 } : {}}
-      className="ml-auto px-2.5 py-1 rounded-md text-xs font-medium text-white bg-[#1A1A1A] hover:bg-[#272425] transition-colors duration-200 cursor-pointer shrink-0"
-    >
-      View trends
-    </motion.button>
-  );
-}
-
-function TrendsViewModal({ onClose }) {
-  const presets = getDateRangePresets();
-  const [metric, setMetric] = useState("leadPipeline");
-  const [presetKey, setPresetKey] = useState("this_week");
-  const [useCustom, setUseCustom] = useState(false);
-  const [customStart, setCustomStart] = useState("");
-  const [customEnd, setCustomEnd] = useState("");
-  const [showCustomCalendar, setShowCustomCalendar] = useState(false);
-  const [chartType, setChartType] = useState("bar");
-  const customAnchorRef = useRef(null);
-
-  const dateRange = useMemo(() => {
-    if (useCustom) {
-      if (customStart && customEnd) return { start: new Date(customStart + "T00:00:00"), end: new Date(customEnd + "T23:59:59") };
-      return null;
-    }
-    const p = presets.find((x) => x.key === presetKey);
-    return p ? { start: p.start, end: p.end } : null;
-  }, [presetKey, useCustom, customStart, customEnd, presets]);
-
-  const chartData = useMemo(() => {
-    if (!dateRange) return [];
-    return getChartData(useCustom ? "custom" : presetKey, dateRange);
-  }, [dateRange, presetKey, useCustom]);
-
-  const metricConfig = {
-    leadPipeline: { key: "totalLeads", label: "Total Leads", color: "#272425", suffix: "" },
-    conversionRate: { key: "conversionRate", label: "Conversion Rate", color: "#2E7D32", suffix: "%" },
-    commentRate: { key: "commentRate", label: "Comment Rate", color: "#FFD100", suffix: "%" },
-    openTasks: { key: "openTasks", label: "Open Tasks", color: "#1565C0", suffix: "" },
-    taskCompletion: { key: "taskCompletionRate", label: "Task Completion Rate", color: "#6A1B9A", suffix: "%" },
-    avgTimeToContact: { key: "avgTimeToContact", label: "Avg. Time to First Contact", color: "#E65100", suffix: "m" },
-  };
-  const config = metricConfig[metric];
-  const values = chartData.map((d) => d[config.key] ?? 0);
-  const labels = chartData.map((d) => d.label);
-  const max = Math.max(...values, 1);
-
-  const chartTypeBtn = (type, label, icon) => (
-    <button
-      onClick={() => setChartType(type)}
-      className={`flex items-center gap-1 px-2.5 py-1.5 rounded-md transition-colors text-xs font-medium cursor-pointer ${
-        chartType === type
-          ? "bg-white text-[var(--hertz-black)] shadow-sm"
-          : "text-[var(--neutral-600)] hover:text-[var(--hertz-black)]"
-      }`}
-      title={label}
-    >
-      {icon}
-    </button>
-  );
-
-  const renderBarChart = () => (
-    <div>
-      <div className="grid" style={{ gridTemplateColumns: `repeat(${values.length}, 1fr)`, height: 200, gap: 4 }}>
-        {values.map((v, i) => (
-          <div key={i} className="flex flex-col items-center">
-            <span className="text-[10px] font-semibold text-[var(--neutral-700)] mb-1 whitespace-nowrap">
-              {v}{config.suffix}
-            </span>
-            <div className="flex-1 w-full flex items-end justify-center">
-              <motion.div
-                initial={{ height: 0 }}
-                animate={{ height: max > 0 ? `${(v / max) * 100}%` : "0%" }}
-                transition={{ delay: i * 0.05, duration: 0.3, ease: "easeOut" }}
-                className="rounded-t-sm"
-                style={{ backgroundColor: config.color, opacity: i === values.length - 1 ? 1 : 0.7, width: "70%", maxWidth: 48 }}
-              />
-            </div>
-          </div>
-        ))}
-      </div>
-      <div className="grid border-t border-[var(--neutral-200)] pt-2 mt-1" style={{ gridTemplateColumns: `repeat(${labels.length}, 1fr)`, gap: 4 }}>
-        {labels.map((l, i) => (
-          <span key={i} className="text-center text-[10px] text-[var(--neutral-600)] truncate">{l}</span>
-        ))}
-      </div>
-    </div>
-  );
-
-  const renderLineChart = () => {
-    const svgW = 560, svgH = 220;
-    const pad = { t: 28, r: 25, b: 32, l: 25 };
-    const plotW = svgW - pad.l - pad.r;
-    const plotH = svgH - pad.t - pad.b;
-    const pts = values.map((v, i) => ({
-      x: pad.l + (values.length > 1 ? (i / (values.length - 1)) * plotW : plotW / 2),
-      y: pad.t + plotH - (max > 0 ? (v / max) * plotH : 0),
-      v,
-    }));
-    const pathD = pts.map((p, i) => `${i === 0 ? "M" : "L"}${p.x},${p.y}`).join(" ");
-    const areaD = pts.length > 1
-      ? `${pathD} L${pts[pts.length - 1].x},${pad.t + plotH} L${pts[0].x},${pad.t + plotH} Z`
-      : "";
-    return (
-      <svg viewBox={`0 0 ${svgW} ${svgH}`} className="w-full" style={{ maxHeight: 240 }}>
-        {[0, 0.25, 0.5, 0.75, 1].map((frac) => {
-          const y = pad.t + plotH * (1 - frac);
-          return <line key={frac} x1={pad.l} y1={y} x2={svgW - pad.r} y2={y} stroke="#e5e5e5" strokeWidth={0.5} />;
-        })}
-        {areaD && <path d={areaD} fill={config.color} opacity={0.07} />}
-        <path d={pathD} fill="none" stroke={config.color} strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round" />
-        {pts.map((p, i) => (
-          <g key={i}>
-            <circle cx={p.x} cy={p.y} r={4} fill={config.color} stroke="white" strokeWidth={2} />
-            <text x={p.x} y={Math.max(12, p.y - 12)} textAnchor="middle" fontSize={10} fontWeight={600} fill="#555">
-              {p.v}{config.suffix}
-            </text>
-            <text x={p.x} y={svgH - 6} textAnchor="middle" fontSize={9} fill="#888">{labels[i]}</text>
-          </g>
-        ))}
-      </svg>
-    );
-  };
-
-  const renderTable = () => (
-    <div className="overflow-x-auto rounded-md">
-      <table className="w-full text-sm">
-        <thead>
-          <tr className="bg-[var(--hertz-black)]">
-            <th className="text-left py-2.5 px-4 text-xs font-semibold text-white uppercase tracking-wider rounded-tl-md">Period</th>
-            <th className="text-right py-2.5 px-4 text-xs font-semibold text-white uppercase tracking-wider rounded-tr-md">{config.label}</th>
-          </tr>
-        </thead>
-        <tbody>
-          {chartData.map((d, i) => (
-            <tr key={i} className="border-b border-[var(--neutral-100)] hover:bg-[var(--neutral-50)] transition-colors">
-              <td className="py-2 px-4 text-[var(--hertz-black)] font-medium">{labels[i]}</td>
-              <td className="py-2 px-4 text-right font-semibold" style={{ color: config.color }}>
-                {values[i]}{config.suffix}
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  );
-
+function SectionHeader({ title, subtitle, action }) {
   return (
     <motion.div
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
-      exit={{ opacity: 0 }}
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
-      onClick={onClose}
-    >
-      <motion.div
-        initial={{ scale: 0.95, opacity: 0 }}
-        animate={{ scale: 1, opacity: 1 }}
-        exit={{ scale: 0.95, opacity: 0 }}
-        onClick={(e) => e.stopPropagation()}
-        className="bg-white rounded-xl shadow-xl max-w-3xl w-full mx-4 flex flex-col"
-        style={{ maxHeight: "95vh" }}
-      >
-        <div className="px-6 py-4 border-b border-[var(--neutral-200)] flex items-center justify-between shrink-0">
-          <h3 className="text-lg font-bold text-[var(--hertz-black)]">View trends</h3>
-          <button onClick={onClose} className="p-1 rounded hover:bg-[var(--neutral-100)] text-[var(--neutral-600)]">
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
-          </button>
-        </div>
-        <div className="px-6 py-4 flex-1" style={{ overflowY: showCustomCalendar ? "visible" : "auto", overflowX: "visible" }}>
-          <div className="flex items-end gap-4 mb-4">
-            <div className="flex-1 min-w-0">
-              <p className="text-xs font-semibold text-[var(--neutral-600)] uppercase tracking-wider mb-1.5">Metric</p>
-              <select
-                value={metric}
-                onChange={(e) => setMetric(e.target.value)}
-                className="w-full px-3 py-2 border border-[var(--neutral-200)] rounded-lg text-sm font-medium text-[var(--hertz-black)] bg-white focus:outline-none focus:border-[var(--hertz-primary)] focus:ring-1 focus:ring-[var(--hertz-primary)] cursor-pointer"
-              >
-                {Object.entries(metricConfig).map(([k, c]) => (
-                  <option key={k} value={k}>{c.label}</option>
-                ))}
-              </select>
-            </div>
-            <div className="shrink-0">
-              <p className="text-xs font-semibold text-[var(--neutral-600)] uppercase tracking-wider mb-1.5">Chart type</p>
-              <div className="flex items-center gap-0.5 rounded-lg border border-[var(--neutral-200)] p-0.5 bg-[var(--neutral-50)]">
-                {chartTypeBtn("bar", "Bar",
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" /></svg>
-                )}
-                {chartTypeBtn("line", "Line",
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><polyline points="4,16 8,10 13,13 20,6" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" /><polyline points="17,6 20,6 20,9" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" /></svg>
-                )}
-                {chartTypeBtn("table", "Table",
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h18M3 14h18M3 6h18M3 18h18" /></svg>
-                )}
-              </div>
-            </div>
-          </div>
-          <p className="text-xs font-semibold text-[var(--neutral-600)] uppercase tracking-wider mb-2">Time range</p>
-          <div className="flex flex-wrap gap-1.5 mb-4">
-            {presets.map((p) => (
-              <button
-                key={p.key}
-                onClick={() => { setPresetKey(p.key); setUseCustom(false); setShowCustomCalendar(false); }}
-                className={`px-2 py-1 rounded text-xs font-medium ${
-                  !useCustom && presetKey === p.key ? "bg-[var(--hertz-primary)] text-[var(--hertz-black)]" : "bg-[var(--neutral-50)] text-[var(--neutral-600)] hover:bg-[var(--neutral-100)]"
-                }`}
-              >
-                {p.label}
-              </button>
-            ))}
-            <div ref={customAnchorRef} className="relative inline-block">
-              <button
-                onClick={() => { setUseCustom(true); setShowCustomCalendar(true); }}
-                className={`px-2 py-1 rounded text-xs font-medium ${useCustom ? "bg-[var(--hertz-primary)] text-[var(--hertz-black)]" : "bg-[var(--neutral-50)] text-[var(--neutral-600)] hover:bg-[var(--neutral-100)]"}`}
-              >
-                Custom
-              </button>
-              <AnimatePresence>
-                {showCustomCalendar && (
-                  <DateRangeCalendar
-                    start={customStart}
-                    end={customEnd}
-                    onChange={({ start: s, end: e }) => { setCustomStart(s); setCustomEnd(e); }}
-                    onClose={() => setShowCustomCalendar(false)}
-                    anchorRef={customAnchorRef}
-                  />
-                )}
-              </AnimatePresence>
-            </div>
-          </div>
-          <div className="border border-[var(--neutral-200)] rounded-lg p-4 bg-[var(--neutral-50)]/30">
-            <p className="text-xs font-bold text-[var(--neutral-600)] uppercase tracking-wider mb-3">{config.label}</p>
-            {chartData.length === 0 ? (
-              <p className="text-sm text-[var(--neutral-600)] py-8 text-center">Select a time range to see the trend.</p>
-            ) : chartType === "bar" ? (
-              renderBarChart()
-            ) : chartType === "line" ? (
-              renderLineChart()
-            ) : (
-              renderTable()
-            )}
-          </div>
-        </div>
-      </motion.div>
-    </motion.div>
-  );
-}
-
-function SectionHeader({ title, action }) {
-  return (
-    <motion.div
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      className="mb-5"
+      className="mb-4"
     >
       <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <div className="w-1 h-6 bg-[var(--hertz-primary)] rounded-full" />
-          <h3 className="text-lg font-extrabold text-[var(--hertz-black)] tracking-tight">
-            {title}
-          </h3>
+        <div className="flex flex-col gap-0.5">
+          <div className="flex items-center gap-3">
+            <div className="w-1 h-6 bg-[var(--hertz-primary)] rounded-full" />
+            <h3 className="text-lg font-extrabold text-[var(--hertz-black)] tracking-tight">
+              {title}
+            </h3>
+          </div>
+          {subtitle && (
+            <p className="text-xs text-[var(--neutral-600)] pl-4">
+              {subtitle}
+            </p>
+          )}
         </div>
         {action}
       </div>
@@ -392,7 +138,7 @@ function leadToHlesRow(lead, org) {
 
 function BMDashboard({ navigateTo, selectLead, selectTask }) {
   const { userProfile } = useAuth();
-  const { leads, fetchTasksForBranch, useSupabase, updateLeadEnrichment } = useData();
+  const { leads, fetchTasksForBranch, useSupabase, updateLeadEnrichment, updateTaskStatus } = useData();
   const reduceMotion = useReducedMotion();
   const branch = userProfile?.branch ?? getDefaultBranchForDemo();
   const displayName = userProfile?.displayName ?? roleUsers.bm?.name ?? "there";
@@ -410,11 +156,20 @@ function BMDashboard({ navigateTo, selectLead, selectTask }) {
   }, [useSupabase, branch, fetchTasksForBranch]);
 
   const presets = getDateRangePresets();
-  const [selectedPresetKey, setSelectedPresetKey] = useState("this_week");
+  const [selectedPresetKey, setSelectedPresetKey] = useState("trailing_4_weeks");
   const [customStart, setCustomStart] = useState("");
   const [customEnd, setCustomEnd] = useState("");
   const [useCustom, setUseCustom] = useState(false);
-  const [showTrendsModal, setShowTrendsModal] = useState(false);
+  const [summaryTrendsMetric, setSummaryTrendsMetric] = useState("leadPipeline");
+  const [summaryTrendsChartType, setSummaryTrendsChartType] = useState("bar");
+  const [trendsOverlayMetric, setTrendsOverlayMetric] = useState("conversionRate");
+  const [trendsTimePresetKey, setTrendsTimePresetKey] = useState("trailing_4_weeks");
+  const [trendsUseCustom, setTrendsUseCustom] = useState(false);
+  const [trendsGroupBy, setTrendsGroupBy] = useState("status");
+  const [trendsCustomStart, setTrendsCustomStart] = useState("");
+  const [trendsCustomEnd, setTrendsCustomEnd] = useState("");
+  const [trendsShowCustomCalendar, setTrendsShowCustomCalendar] = useState(false);
+  const trendsCustomAnchorRef = useRef(null);
   const [leadsViewMode, setLeadsViewMode] = useState("table"); // "table" | "board"
   const [drilldownMetric, setDrilldownMetric] = useState(null);
   const [showCustomCalendar, setShowCustomCalendar] = useState(false);
@@ -430,8 +185,19 @@ function BMDashboard({ navigateTo, selectLead, selectTask }) {
 
   const [tasksStatusFilter, setTasksStatusFilter] = useState("All");
   const [tasksPriorityFilter, setTasksPriorityFilter] = useState("All");
-  const [tasksCreatedByFilter, setTasksCreatedByFilter] = useState("All");
   const [tasksDueDateFilter, setTasksDueDateFilter] = useState("All");
+
+  const [leadsExpanded, setLeadsExpanded] = useState(false);
+  const [tasksExpanded, setTasksExpanded] = useState(false);
+  const [stackedBarTooltip, setStackedBarTooltip] = useState(null);
+  const [chartOverlayTooltip, setChartOverlayTooltip] = useState(null);
+  const [chartBarTooltip, setChartBarTooltip] = useState(null);
+
+  useEffect(() => {
+    if (summaryTrendsChartType === "line" && (trendsOverlayMetric || trendsGroupBy !== "period")) {
+      setSummaryTrendsChartType("bar");
+    }
+  }, [summaryTrendsChartType, trendsOverlayMetric, trendsGroupBy]);
 
   const dateRange = useMemo(() => {
     if (useCustom && customStart && customEnd) {
@@ -444,9 +210,54 @@ function BMDashboard({ navigateTo, selectLead, selectTask }) {
     return preset ? { start: preset.start, end: preset.end } : null;
   }, [selectedPresetKey, useCustom, customStart, customEnd, presets]);
 
-  const stats = getBMStats(leads, dateRange, branch);
   const branchLeads = getLeadsForBranch(leads, branch);
-  const pipelineLeads = useMemo(() => getLeadsForBranchInRange(leads, dateRange, branch), [leads, dateRange, branch]);
+
+  const { stats, chartData: trendsChartData } = useMemo(() => {
+    if (!dateRange) return { stats: getBMStats(leads, dateRange, branch), chartData: [] };
+    return getSummaryDataWithChart(
+      leads,
+      branchTasks,
+      dateRange,
+      branch,
+      useCustom ? "custom" : selectedPresetKey,
+      trendsGroupBy
+    );
+  }, [dateRange, selectedPresetKey, useCustom, trendsGroupBy, leads, branch, branchTasks]);
+
+  const isStackedView = trendsGroupBy !== "period";
+
+  const summaryTrendsMetricConfig = {
+    leadPipeline: { key: "totalLeads", label: "Total Leads", color: "#272425", suffix: "" },
+    conversionRate: { key: "conversionRate", label: "Conversion Rate", color: "#2E7D32", suffix: "%" },
+    commentRate: { key: "commentRate", label: "Comment Rate", color: "#FFD100", suffix: "%" },
+    openTasks: { key: "openTasks", label: "Open Tasks", color: "#1565C0", suffix: "" },
+    taskCompletion: { key: "taskCompletionRate", label: "Task Completion Rate", color: "#6A1B9A", suffix: "%" },
+    avgTimeToContact: { key: "avgTimeToContact", label: "Avg. Time to First Contact", color: "#E65100", suffix: "m" },
+  };
+
+  /** Stacked view only supports lead/count metrics; task/time metrics need period-level aggregation. */
+  const STACKED_SUPPORTED_METRICS = ["leadPipeline", "conversionRate", "commentRate"];
+  const summaryTrendsMetricOptions = useMemo(() => {
+    const entries = Object.entries(summaryTrendsMetricConfig);
+    if (isStackedView) {
+      return entries.filter(([k]) => STACKED_SUPPORTED_METRICS.includes(k));
+    }
+    return entries;
+  }, [isStackedView]);
+
+  const effectiveTrendsMetric =
+    isStackedView && !STACKED_SUPPORTED_METRICS.includes(summaryTrendsMetric)
+      ? "conversionRate"
+      : summaryTrendsMetric;
+
+  const overlayOptions = useMemo(() => {
+    const opts = [{ value: "", label: "None" }];
+    const others = Object.entries(summaryTrendsMetricConfig).filter(
+      ([k]) => k !== effectiveTrendsMetric && (isStackedView ? STACKED_SUPPORTED_METRICS.includes(k) : true)
+    );
+    others.forEach(([k, c]) => opts.push({ value: k, label: c.label }));
+    return opts;
+  }, [effectiveTrendsMetric, isStackedView]);
 
   const leadsFilterOptions = useMemo(() => {
     const statuses = [...new Set(branchLeads.map((l) => l.status))].sort();
@@ -480,17 +291,23 @@ function BMDashboard({ navigateTo, selectLead, selectTask }) {
         return d >= min && d <= max;
       });
     }
-    result = [...result].sort((a, b) => (b.daysOpen ?? 0) - (a.daysOpen ?? 0));
+    // Rented + enrichment complete go to bottom; otherwise sort by daysOpen desc
+    result = [...result].sort((a, b) => {
+      const aClosed = a.status === "Rented" && a.enrichmentComplete;
+      const bClosed = b.status === "Rented" && b.enrichmentComplete;
+      if (aClosed && !bClosed) return 1;
+      if (!aClosed && bClosed) return -1;
+      return (b.daysOpen ?? 0) - (a.daysOpen ?? 0);
+    });
     return result;
   }, [branchLeads, leadsStatusFilter, leadsInsuranceFilter, leadsCancelReasonFilter, leadsDaysOpenFilter, leadsTimeToContactFilter, leadsFirstContactByFilter]);
 
   const tasksFilterOptions = useMemo(() => {
     const statuses = [...new Set(branchTasks.map((t) => t.status))].sort();
-    const priorities = [...new Set(branchTasks.map((t) => t.priority ?? "Normal"))].sort((a, b) => {
-      const order = { Urgent: 0, High: 1, Normal: 2, Low: 3 };
-      return (order[a] ?? 2) - (order[b] ?? 2);
+    const priorities = [...new Set(branchTasks.map((t) => t.priority ?? "Medium"))].sort((a, b) => {
+      const order = { High: 0, Medium: 1, Low: 2 };
+      return (order[a] ?? 1) - (order[b] ?? 1);
     });
-    const createdBys = [...new Set(branchTasks.map((t) => t.createdBy ?? "—").filter(Boolean))].sort((a, b) => (a === "—" ? 1 : b === "—" ? -1 : a.localeCompare(b)));
     const dueDateRanges = [
       { value: "overdue", label: "Overdue" },
       { value: "today", label: "Due today" },
@@ -498,14 +315,13 @@ function BMDashboard({ navigateTo, selectLead, selectTask }) {
       { value: "later", label: "Due later" },
       { value: "none", label: "No due date" },
     ];
-    return { statuses, priorities, createdBys, dueDateRanges };
+    return { statuses, priorities, dueDateRanges };
   }, [branchTasks]);
 
   const filteredBranchTasks = useMemo(() => {
     let result = branchTasks;
     if (tasksStatusFilter !== "All") result = result.filter((t) => t.status === tasksStatusFilter);
-    if (tasksPriorityFilter !== "All") result = result.filter((t) => (t.priority ?? "Normal") === tasksPriorityFilter);
-    if (tasksCreatedByFilter !== "All") result = result.filter((t) => (t.createdBy ?? "—") === tasksCreatedByFilter);
+    if (tasksPriorityFilter !== "All") result = result.filter((t) => (t.priority ?? "Medium") === tasksPriorityFilter);
     if (tasksDueDateFilter !== "All") {
       const today = new Date();
       today.setHours(0, 0, 0, 0);
@@ -525,8 +341,21 @@ function BMDashboard({ navigateTo, selectLead, selectTask }) {
         return true;
       });
     }
-    return result;
-  }, [branchTasks, tasksStatusFilter, tasksPriorityFilter, tasksCreatedByFilter, tasksDueDateFilter]);
+    // Completed tasks (Done) go to bottom
+    return [...result].sort((a, b) => (a.status === "Done" ? 1 : 0) - (b.status === "Done" ? 1 : 0));
+  }, [branchTasks, tasksStatusFilter, tasksPriorityFilter, tasksDueDateFilter]);
+
+  const DISPLAY_LIMIT = 5;
+  const displayLeads = useMemo(
+    () => (leadsExpanded ? filteredBranchLeads : filteredBranchLeads.slice(0, DISPLAY_LIMIT)),
+    [filteredBranchLeads, leadsExpanded]
+  );
+  const displayTasks = useMemo(
+    () => (tasksExpanded ? filteredBranchTasks : filteredBranchTasks.slice(0, DISPLAY_LIMIT)),
+    [filteredBranchTasks, tasksExpanded]
+  );
+  const hasMoreLeads = filteredBranchLeads.length > DISPLAY_LIMIT;
+  const hasMoreTasks = filteredBranchTasks.length > DISPLAY_LIMIT;
 
   const presetKey = useCustom ? "custom" : selectedPresetKey;
   const comparisonRange = useCustom
@@ -587,13 +416,669 @@ function BMDashboard({ navigateTo, selectLead, selectTask }) {
   const greeting = getTimeOfDayGreeting();
   const insight = getContextualInsight({ stats, comparisonStats, openTasksCount, convRate, prevConvRate });
 
-  return (
-    <div className="max-w-6xl">
-      <AnimatePresence>
-        {showTrendsModal && (
-          <TrendsViewModal onClose={() => setShowTrendsModal(false)} />
+  const trendsConfig = summaryTrendsMetricConfig[effectiveTrendsMetric];
+  const trendsValues = isStackedView ? [] : trendsChartData.map((d) => d[trendsConfig.key] ?? 0);
+  const trendsLabels = isStackedView
+    ? trendsChartData.map((d) => d.period)
+    : trendsChartData.map((d) => d.label);
+  const trendsMax = Math.max(...trendsValues, 1);
+
+  const overlayConfig = trendsOverlayMetric ? summaryTrendsMetricConfig[trendsOverlayMetric] : null;
+  const overlayValues = overlayConfig ? trendsChartData.map((d) => d[overlayConfig.key] ?? 0) : [];
+  const overlayMax = overlayValues.length > 0 ? Math.max(...overlayValues, 1) : 1;
+
+  const SEGMENT_COLORS = {
+    Rented: "var(--hertz-primary)",
+    Cancelled: "var(--hertz-black)",
+    Unused: "var(--neutral-600)",
+  };
+  const SEGMENT_ORDER = ["Rented", "Cancelled", "Unused"];
+  const PALETTE = ["#272425", "#2E7D32", "#1565C0", "#6A1B9A", "#E65100", "#FFD100", "#78909C", "#4DB6AC"];
+  const getSegmentColor = (key) => SEGMENT_COLORS[key] ?? PALETTE[Math.abs(key.split("").reduce((a, c) => a + c.charCodeAt(0), 0)) % PALETTE.length];
+
+  const stackedSegmentKeys = useMemo(() => {
+    if (!isStackedView) return [];
+    const keys = new Set();
+    for (const row of trendsChartData) {
+      for (const k of Object.keys(row.segments ?? {})) keys.add(k);
+    }
+    const ordered = [...keys].sort((a, b) => {
+      const ai = SEGMENT_ORDER.indexOf(a);
+      const bi = SEGMENT_ORDER.indexOf(b);
+      if (ai >= 0 && bi >= 0) return ai - bi;
+      if (ai >= 0) return -1;
+      if (bi >= 0) return 1;
+      return String(a).localeCompare(String(b));
+    });
+    return ordered;
+  }, [isStackedView, trendsChartData]);
+
+  const trendsChartTypeBtn = (type, icon, label) => (
+    <button
+      onClick={() => setSummaryTrendsChartType(type)}
+      className={`flex items-center gap-1 px-2.5 py-1.5 rounded-md transition-colors text-xs font-medium cursor-pointer ${
+        summaryTrendsChartType === type
+          ? "bg-white text-[var(--hertz-black)] shadow-sm"
+          : "text-[var(--neutral-600)] hover:text-[var(--hertz-black)]"
+      }`}
+      title={label ?? (type === "bar" ? "Bar" : type === "line" ? "Line" : "Table")}
+    >
+      {icon}
+    </button>
+  );
+
+  const getStackedBarLabel = (row) => {
+    if (effectiveTrendsMetric === "leadPipeline") return row.total;
+    if (effectiveTrendsMetric === "conversionRate") return row.conversionRate != null ? `${row.conversionRate}%` : "—";
+    if (effectiveTrendsMetric === "commentRate") return row.commentRate != null ? `${row.commentRate}%` : "—";
+    return row.total;
+  };
+
+  const renderTrendsBarChart = () => {
+    if (isStackedView) {
+      const stackedHasOverlay = !!trendsOverlayMetric && overlayValues.length > 0;
+      const stackedN = trendsChartData.length;
+      const stackedPadR = stackedHasOverlay ? 40 : 0;
+      const isCountMetric = effectiveTrendsMetric === "leadPipeline" || effectiveTrendsMetric === "openTasks";
+      const stackedMaxTotal = isCountMetric ? Math.max(...trendsChartData.map((d) => d.total ?? 0), 1) : 100;
+      const niceMax = isCountMetric ? (stackedMaxTotal <= 4 ? 4 : stackedMaxTotal <= 8 ? 8 : stackedMaxTotal <= 12 ? 12 : Math.ceil(stackedMaxTotal / 5) * 5) : 100;
+      const yTickCount = 5;
+      const yTicks = Array.from({ length: yTickCount }, (_, i) => Math.round((niceMax * i) / (yTickCount - 1)));
+
+      const AXIS_GAP = 12;
+      return (
+        <div>
+          <div className="flex items-center pt-1 pb-9">
+            <div className="flex flex-wrap gap-x-2 gap-y-0.5">
+              {stackedSegmentKeys.map((k) => (
+                <div key={k} className="flex items-center gap-1">
+                  <div className="w-2.5 h-2.5 shrink-0" style={{ backgroundColor: getSegmentColor(k), borderRadius: 0 }} />
+                  <span className="text-xs font-medium text-[var(--neutral-600)]">{k}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+          {/* Chart area: y-axis + bars + overlay + secondary y-axis — equidistant spacing from grid to each axis */}
+          <div className="flex" style={{ height: 260, gap: AXIS_GAP }}>
+            <div className="flex flex-col justify-between shrink-0 py-0.5 text-right" style={{ width: 36, paddingRight: AXIS_GAP }}>
+              {[...yTicks].reverse().map((val) => (
+                <span key={val} className="text-xs text-[var(--neutral-500)]" style={{ lineHeight: 1 }}>{val}{isCountMetric ? "" : "%"}</span>
+              ))}
+            </div>
+            <div className="flex flex-1 min-w-0">
+              <div className="flex-1 relative border-l border-[var(--neutral-200)]" style={{ paddingRight: stackedPadR }}>
+              {/* Grid lines — extend full width so they reach the secondary y-axis */}
+              <div className="absolute inset-0 z-0 pointer-events-none">
+                {yTicks.map((val) => (
+                  <div
+                    key={val}
+                    className="absolute left-0 right-0 border-t border-[var(--neutral-200)]"
+                    style={{ top: `${100 - (val / niceMax) * 100}%`, height: 0 }}
+                  />
+                ))}
+              </div>
+              {/* Bars + bar-top labels — equidistant spacing from grid edges */}
+              <div className="grid absolute inset-0 z-10 h-full" style={{ gridTemplateColumns: `repeat(${stackedN}, 1fr)`, gap: 4, right: stackedPadR, paddingLeft: AXIS_GAP, paddingRight: AXIS_GAP }}>
+                {trendsChartData.map((row, i) => {
+                  const totalBarPct = isCountMetric
+                    ? (row.total / niceMax) * 100
+                    : Object.values(row.segments ?? {}).reduce((s, v) => s + v, 0);
+                  return (
+                  <div key={i} className="flex flex-col items-center h-full relative">
+                    <span
+                      className="absolute left-1/2 z-10 text-xs font-semibold text-[var(--neutral-700)] whitespace-nowrap pointer-events-none"
+                      style={{ bottom: `${totalBarPct}%`, transform: "translateX(-50%)", marginBottom: 2 }}
+                    >
+                      {getStackedBarLabel(row)}
+                    </span>
+                    <div className="flex-1 w-full flex flex-col-reverse items-center relative" style={{ width: "70%", maxWidth: 48 }}>
+                      {stackedSegmentKeys.map((k) => {
+                        const count = row.raw?.[k] ?? 0;
+                        const pct = row.segments?.[k] ?? 0;
+                        if (count <= 0 && pct <= 0) return null;
+                        const heightPct = isCountMetric
+                          ? (count / niceMax) * 100
+                          : pct;
+                        return (
+                          <motion.div
+                            key={k}
+                            initial={{ height: 0 }}
+                            animate={{ height: `${heightPct}%` }}
+                            transition={{ delay: i * 0.03, duration: 0.3, ease: "easeOut" }}
+                            className="w-full min-h-[2px] cursor-default"
+                            style={{ backgroundColor: getSegmentColor(k), borderRadius: 0 }}
+                            onMouseEnter={(e) => {
+                              const rect = e.currentTarget.getBoundingClientRect();
+                              const period = trendsLabels[i] ?? row.period ?? "";
+                              setStackedBarTooltip({ period, hoveredSegment: k, raw: row.raw, segments: row.segments, total: row.total, x: rect.left + rect.width / 2, y: rect.top });
+                            }}
+                            onMouseLeave={() => setStackedBarTooltip(null)}
+                          />
+                        );
+                      })}
+                    </div>
+                  </div>
+                  );
+                })}
+              </div>
+              {/* Overlay line — inset wrapper with HTML dots + SVG polyline + data labels */}
+              {stackedHasOverlay && (() => {
+                const OVERLAY_INSET = 6;
+                const bottomPct = (v) => overlayMax > 0 ? (v / overlayMax) * 100 : 0;
+                return (
+                <div className="absolute z-20 pointer-events-none" style={{ top: OVERLAY_INSET, bottom: OVERLAY_INSET, left: AXIS_GAP, right: stackedPadR + AXIS_GAP }}>
+                  {stackedN > 1 && (
+                  <svg className="absolute inset-0" width="100%" height="100%" viewBox="0 0 100 100" preserveAspectRatio="none">
+                    <polyline
+                      fill="none"
+                      stroke="var(--color-success)"
+                      strokeWidth={2}
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      vectorEffect="non-scaling-stroke"
+                      points={overlayValues.map((v, i) => {
+                        const x = ((i + 0.5) / stackedN) * 100;
+                        const y = 100 - bottomPct(v);
+                        return `${x},${y}`;
+                      }).join(" ")}
+                    />
+                  </svg>
+                  )}
+                  {overlayValues.map((v, i) => {
+                    const leftPct = ((i + 0.5) / stackedN) * 100;
+                    const bPct = bottomPct(v);
+                    const label = trendsLabels[i] ?? "";
+                    return (
+                      <div
+                        key={i}
+                        className="absolute"
+                        style={{ left: `${leftPct}%`, bottom: `${bPct}%`, transform: "translate(-50%, 50%)", pointerEvents: "all", cursor: "pointer" }}
+                        onMouseEnter={(e) => {
+                          const rect = e.currentTarget.getBoundingClientRect();
+                          setChartOverlayTooltip({ period: label, value: v, suffix: overlayConfig?.suffix ?? "", x: rect.left + rect.width / 2, y: rect.top });
+                        }}
+                        onMouseLeave={() => setChartOverlayTooltip(null)}
+                      >
+                        <div className="w-2.5 h-2.5 rounded-full bg-[var(--color-success)] border-2 border-white shadow-sm relative">
+                          <span className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1 text-xs font-bold text-[var(--color-success)] whitespace-nowrap pointer-events-none">
+                            {v}{overlayConfig?.suffix ?? ""}
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+                );
+              })()}
+            </div>
+            {stackedHasOverlay && (
+              <div className="flex flex-col justify-between shrink-0 border-l border-[var(--neutral-200)]" style={{ width: 36, paddingTop: 6, paddingBottom: 6, paddingLeft: AXIS_GAP }}>
+                {[0, 0.25, 0.5, 0.75, 1].map((f) => Math.round(overlayMax * f)).reverse().map((val, idx) => (
+                  <span key={idx} className="text-xs text-[var(--neutral-500)]" style={{ lineHeight: 1 }}>{val}{overlayConfig?.suffix ?? ""}</span>
+                ))}
+              </div>
+            )}
+            </div>
+          </div>
+          {stackedBarTooltip && (
+            <div
+              className="fixed z-50 px-3 py-2 bg-[var(--hertz-black)] text-white text-xs font-medium rounded shadow-lg pointer-events-none"
+              style={{ left: stackedBarTooltip.x, top: stackedBarTooltip.y - 8, transform: "translate(-50%, -100%)" }}
+            >
+              {stackedBarTooltip.period && <div className="font-semibold mb-1">{stackedBarTooltip.period}</div>}
+              <div className="space-y-0.5">
+                {stackedSegmentKeys.map((k) => {
+                  const count = stackedBarTooltip.raw?.[k] ?? 0;
+                  const pct = stackedBarTooltip.segments?.[k] ?? 0;
+                  if (count <= 0 && pct <= 0) return null;
+                  const isHovered = k === stackedBarTooltip.hoveredSegment;
+                  return (
+                    <div key={k} className="flex items-center gap-1.5" style={{ opacity: isHovered ? 1 : 0.7 }}>
+                      <div className="w-2 h-2 shrink-0" style={{ backgroundColor: getSegmentColor(k) }} />
+                      <span>{k}: {count} ({pct}%)</span>
+                    </div>
+                  );
+                })}
+              </div>
+              <div className="mt-1 pt-1 border-t border-white/20 text-xs opacity-70">
+                Total: {stackedBarTooltip.total}
+              </div>
+            </div>
+          )}
+          {chartOverlayTooltip && (
+            <div
+              className="fixed z-50 px-2.5 py-1.5 bg-[var(--hertz-black)] text-white text-xs font-medium rounded shadow-lg pointer-events-none"
+              style={{ left: chartOverlayTooltip.x, top: chartOverlayTooltip.y - 8, transform: "translate(-50%, -100%)" }}
+            >
+              <div className="font-semibold">{chartOverlayTooltip.period}</div>
+              <div className="text-xs opacity-90 text-[var(--color-success)]">
+                {overlayConfig?.label ?? ""}: {chartOverlayTooltip.value}{chartOverlayTooltip.suffix}
+              </div>
+            </div>
+          )}
+          {/* X-axis labels — match chart row structure so columns align with bar midpoints */}
+          <div className="flex pt-2 mt-1 border-t border-[var(--neutral-200)]" style={{ gap: AXIS_GAP }}>
+            <div style={{ width: 36 }} />
+            <div className="flex flex-1 min-w-0">
+              <div className="flex-1 grid" style={{ gridTemplateColumns: `repeat(${trendsLabels.length}, 1fr)`, gap: 4, paddingLeft: AXIS_GAP, paddingRight: stackedPadR + AXIS_GAP }}>
+                {trendsLabels.map((l, i) => (
+                  <span key={i} className="text-center text-xs text-[var(--neutral-500)] truncate">{l}</span>
+                ))}
+              </div>
+              {stackedHasOverlay && <div style={{ width: 36 }} />}
+            </div>
+          </div>
+        </div>
+      );
+    }
+    const yTickValues = [0, 0.25, 0.5, 0.75, 1].map((f) => Math.round(trendsMax * f));
+    const chartHeight = 280;
+    const hasOverlay = !!trendsOverlayMetric && overlayValues.length > 0;
+    const n = trendsValues.length;
+    const padR = hasOverlay ? 40 : 0;
+    const overlayTickValues = [0, 0.25, 0.5, 0.75, 1].map((f) => Math.round(overlayMax * f));
+    const nonStackedAxisGap = 12;
+    return (
+      <div>
+        <div className="flex" style={{ height: chartHeight, gap: nonStackedAxisGap }}>
+          <div className="flex flex-col justify-between shrink-0 py-0.5 text-right" style={{ width: 36, paddingRight: nonStackedAxisGap }}>
+            {[...yTickValues].reverse().map((val) => (
+              <span key={val} className="text-xs text-[var(--neutral-500)]" style={{ lineHeight: 1 }}>{val}{trendsConfig.suffix}</span>
+            ))}
+          </div>
+          <div className="flex flex-1 min-w-0">
+          <div className="flex-1 relative border-l border-[var(--neutral-200)]" style={{ minHeight: 260, paddingRight: padR }}>
+            {/* Grid lines — extend full width so they reach the secondary y-axis */}
+            <div className="absolute inset-0 z-0 pointer-events-none">
+              {[0, 0.25, 0.5, 0.75, 1].map((frac) => (
+                <div
+                  key={frac}
+                  className="absolute left-0 right-0 border-t border-[var(--neutral-200)]"
+                  style={{ top: `${(1 - frac) * 100}%`, height: 0 }}
+                />
+              ))}
+            </div>
+            <div className="absolute inset-0 grid z-10" style={{ gridTemplateColumns: `repeat(${n}, 1fr)`, gap: 4, right: padR, paddingLeft: nonStackedAxisGap, paddingRight: nonStackedAxisGap }}>
+          {trendsValues.map((v, i) => {
+            const barHeightPct = trendsMax > 0 ? Math.min(100, (v / trendsMax) * 100) : 0;
+            const label = trendsLabels[i] ?? "";
+            return (
+            <div
+              key={i}
+              className="flex flex-col justify-end items-center h-full cursor-pointer relative"
+              onMouseEnter={(e) => {
+                const rect = e.currentTarget.getBoundingClientRect();
+                setChartBarTooltip({ label, value: v, suffix: trendsConfig.suffix, x: rect.left + rect.width / 2, y: rect.top });
+              }}
+              onMouseLeave={() => setChartBarTooltip(null)}
+            >
+              <span
+                className="absolute left-1/2 z-10 text-xs font-semibold text-[var(--neutral-700)] whitespace-nowrap pointer-events-none"
+                style={{ bottom: `${barHeightPct}%`, transform: "translateX(-50%)", marginBottom: 2 }}
+              >
+                {v}{trendsConfig.suffix}
+              </span>
+              <motion.div
+                initial={{ height: 0 }}
+                animate={{ height: `${barHeightPct}%` }}
+                transition={{ delay: i * 0.05, duration: 0.3, ease: "easeOut" }}
+                className="rounded-none w-[70%] max-w-[48px] self-center"
+                style={{ backgroundColor: trendsConfig.color, opacity: i === trendsValues.length - 1 ? 1 : 0.7, minHeight: 0 }}
+              />
+            </div>
+          );
+          })}
+            </div>
+            {/* Overlay line — inset wrapper with HTML dots + SVG polyline + data labels */}
+            {hasOverlay && (() => {
+              const OVERLAY_INSET = 6;
+              const bottomPct = (v) => overlayMax > 0 ? (v / overlayMax) * 100 : 0;
+              return (
+              <div className="absolute z-20 pointer-events-none" style={{ top: OVERLAY_INSET, bottom: OVERLAY_INSET, left: nonStackedAxisGap, right: padR + nonStackedAxisGap }}>
+                {n > 1 && (
+                <svg className="absolute inset-0" width="100%" height="100%" viewBox="0 0 100 100" preserveAspectRatio="none">
+                  <polyline
+                    fill="none"
+                    stroke="var(--color-success)"
+                    strokeWidth={2}
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    vectorEffect="non-scaling-stroke"
+                    points={overlayValues.map((v, i) => {
+                      const x = ((i + 0.5) / n) * 100;
+                      const y = 100 - bottomPct(v);
+                      return `${x},${y}`;
+                    }).join(" ")}
+                  />
+                </svg>
+                )}
+                {overlayValues.map((v, i) => {
+                  const leftPct = ((i + 0.5) / n) * 100;
+                  const bPct = bottomPct(v);
+                  const label = trendsLabels[i] ?? "";
+                  return (
+                    <div
+                      key={i}
+                      className="absolute"
+                      style={{ left: `${leftPct}%`, bottom: `${bPct}%`, transform: "translate(-50%, 50%)", pointerEvents: "all", cursor: "pointer" }}
+                      onMouseEnter={(e) => {
+                        const rect = e.currentTarget.getBoundingClientRect();
+                        setChartOverlayTooltip({ period: label, value: v, suffix: overlayConfig?.suffix ?? "", x: rect.left + rect.width / 2, y: rect.top });
+                      }}
+                      onMouseLeave={() => setChartOverlayTooltip(null)}
+                    >
+                      <div className="w-2.5 h-2.5 rounded-full bg-[var(--color-success)] border-2 border-white shadow-sm relative">
+                        <span className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1 text-xs font-bold text-[var(--color-success)] whitespace-nowrap pointer-events-none">
+                          {v}{overlayConfig?.suffix ?? ""}
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+              );
+            })()}
+          </div>
+          {hasOverlay && (
+            <div className="flex flex-col justify-between shrink-0 border-l border-[var(--neutral-200)]" style={{ width: 36, paddingTop: 6, paddingBottom: 6, paddingLeft: nonStackedAxisGap }}>
+              {[...overlayTickValues].reverse().map((val) => (
+                <span key={val} className="text-xs text-[var(--neutral-500)]" style={{ lineHeight: 1 }}>{val}{overlayConfig?.suffix ?? ""}</span>
+              ))}
+            </div>
+          )}
+          </div>
+        </div>
+        {/* X-axis labels — match chart row structure so columns align with bar midpoints */}
+        <div className="flex pt-2 mt-1 border-t border-[var(--neutral-200)]" style={{ gap: nonStackedAxisGap }}>
+          <div style={{ width: 36 }} />
+          <div className="flex flex-1 min-w-0">
+            <div className="flex-1 grid" style={{ gridTemplateColumns: `repeat(${n}, 1fr)`, gap: 4, paddingLeft: nonStackedAxisGap, paddingRight: padR + nonStackedAxisGap }}>
+              {trendsLabels.map((l, i) => (
+                <span key={i} className="text-center text-xs text-[var(--neutral-500)] truncate">{l}</span>
+              ))}
+            </div>
+            {hasOverlay && <div style={{ width: 36 }} />}
+          </div>
+        </div>
+        {chartBarTooltip && (
+          <div
+            className="fixed z-50 px-2.5 py-1.5 bg-[var(--hertz-black)] text-white text-xs font-medium rounded shadow-lg pointer-events-none"
+            style={{ left: chartBarTooltip.x, top: chartBarTooltip.y - 8, transform: "translate(-50%, -100%)" }}
+          >
+            <div className="font-semibold">{chartBarTooltip.label}</div>
+            <div className="text-xs opacity-90">
+              {trendsConfig.label}: {chartBarTooltip.value}{chartBarTooltip.suffix}
+            </div>
+          </div>
         )}
-      </AnimatePresence>
+        {chartOverlayTooltip && (
+          <div
+            className="fixed z-50 px-2.5 py-1.5 bg-[var(--hertz-black)] text-white text-xs font-medium rounded shadow-lg pointer-events-none"
+            style={{ left: chartOverlayTooltip.x, top: chartOverlayTooltip.y - 8, transform: "translate(-50%, -100%)" }}
+          >
+            <div className="font-semibold">{chartOverlayTooltip.period}</div>
+            <div className="text-xs opacity-90 text-[var(--color-success)]">
+              {overlayConfig?.label ?? ""}: {chartOverlayTooltip.value}{chartOverlayTooltip.suffix}
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  const renderTrendsLineChart = () => {
+    if (isStackedView) {
+      const svgW = 560, svgH = 300;
+      const pad = { t: 28, r: 25, b: 32, l: 42 };
+      const plotW = svgW - pad.l - pad.r;
+      const plotH = svgH - pad.t - pad.b;
+      const n = trendsChartData.length;
+      const paths = stackedSegmentKeys.map((k, segIdx) => {
+        const pts = trendsChartData.map((row, i) => {
+          const pct = row.segments?.[k] ?? 0;
+          const prevPct = stackedSegmentKeys.slice(0, segIdx).reduce((s, kk) => s + (row.segments?.[kk] ?? 0), 0);
+          const yFromBottom = prevPct + pct;
+          const y = pad.t + plotH - (yFromBottom / 100) * plotH;
+          const x = n > 1 ? pad.l + (i / (n - 1)) * plotW : pad.l + plotW / 2;
+          return { x, y, pct };
+        });
+        const pathD = pts.map((p, i) => `${i === 0 ? "M" : "L"}${p.x},${p.y}`).join(" ");
+        const areaD = n > 1
+          ? `${pathD} L${pts[n - 1].x},${pad.t + plotH} L${pts[0].x},${pad.t + plotH} Z`
+          : "";
+        return { pathD, areaD, pts, color: getSegmentColor(k), key: k };
+      });
+      const stackedLineHasOverlay = !!trendsOverlayMetric && overlayValues.length > 0;
+      const stackedLinePadR = stackedLineHasOverlay ? 40 : 0;
+      const stackedLinePad = { ...pad, r: pad.r + stackedLinePadR };
+      const overlayPtsStacked = stackedLineHasOverlay && overlayValues.length > 0
+        ? overlayValues.map((v, i) => ({
+            x: pad.l + (overlayValues.length > 1 ? (i / (overlayValues.length - 1)) * plotW : plotW / 2),
+            y: pad.t + plotH - (overlayMax > 0 ? (v / overlayMax) * plotH : 0),
+            v,
+          }))
+        : [];
+      const overlayPathDStacked = overlayPtsStacked.length > 1
+        ? overlayPtsStacked.map((p, i) => `${i === 0 ? "M" : "L"}${p.x},${p.y}`).join(" ")
+        : "";
+      return (
+        <div>
+          <svg viewBox={`0 0 ${svgW} ${svgH}`} className="w-full overflow-visible" style={{ maxHeight: 320 }}>
+            {/* Y-axis line */}
+            <line x1={pad.l} y1={pad.t} x2={pad.l} y2={pad.t + plotH} stroke="#d1d5db" strokeWidth={1} />
+            {/* Horizontal grid lines and y-axis labels */}
+            {[0, 25, 50, 75, 100].map((frac) => {
+              const y = pad.t + plotH - (frac / 100) * plotH;
+              return (
+                <g key={frac}>
+                  <line x1={pad.l} y1={y} x2={stackedLineHasOverlay ? svgW - pad.r : svgW - stackedLinePad.r} y2={y} stroke="#e5e5e5" strokeWidth={0.5} strokeDasharray="2,2" />
+                  <text x={pad.l - 6} y={y + 3} textAnchor="end" fontSize={12} fill="#6b7280">{frac}%</text>
+                </g>
+              );
+            })}
+            {stackedLineHasOverlay && (
+              <line x1={svgW - pad.r} y1={pad.t} x2={svgW - pad.r} y2={pad.t + plotH} stroke="#d1d5db" strokeWidth={1} />
+            )}
+            {stackedLineHasOverlay && [0, 25, 50, 75, 100].map((frac) => {
+              const y = pad.t + plotH * (1 - frac / 100);
+              const val = Math.round(overlayMax * frac / 100);
+              return (
+                <text key={`ov-${frac}`} x={svgW - pad.r + 6} y={y + 3} textAnchor="start" fontSize={12} fill="#6b7280">{val}{overlayConfig?.suffix ?? ""}</text>
+              );
+            })}
+            {paths.map(({ areaD, pathD, color, key }) => (
+              <g key={key}>
+                {areaD && <path d={areaD} fill={color} opacity={0.6} />}
+                <path d={pathD} fill="none" stroke={color} strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" />
+              </g>
+            ))}
+            {stackedLineHasOverlay && overlayPathDStacked && (
+              <g>
+                <path d={overlayPathDStacked} fill="none" stroke="var(--color-success)" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round" strokeDasharray="4 3" />
+                {overlayPtsStacked.map((p, i) => (
+                  <g key={i}>
+                    <circle cx={p.x} cy={p.y} r={2} fill="var(--color-success)" stroke="white" strokeWidth={1} />
+                    <text x={p.x} y={Math.max(12, p.y - 8)} textAnchor="middle" fontSize={12} fontWeight={700} fill="var(--color-success)">
+                      {p.v}{overlayConfig?.suffix ?? ""}
+                    </text>
+                  </g>
+                ))}
+              </g>
+            )}
+            {trendsChartData.map((row, i) => {
+              const x = n > 1 ? pad.l + (i / (n - 1)) * plotW : pad.l + plotW / 2;
+              return (
+                <text key={i} x={x} y={svgH - 6} textAnchor="middle" fontSize={12} fill="#6b7280">{row.period}</text>
+              );
+            })}
+          </svg>
+        </div>
+      );
+    }
+    const hasOverlay = !!trendsOverlayMetric && overlayValues.length > 0;
+    const padR = hasOverlay ? 40 : 0;
+    const svgW = 560, svgH = 300;
+    const pad = { t: 28, r: 25 + padR, b: 32, l: 42 };
+    const plotW = svgW - pad.l - pad.r;
+    const plotH = svgH - pad.t - pad.b;
+    const pts = trendsValues.map((v, i) => ({
+      x: pad.l + (trendsValues.length > 1 ? (i / (trendsValues.length - 1)) * plotW : plotW / 2),
+      y: pad.t + plotH - (trendsMax > 0 ? (v / trendsMax) * plotH : 0),
+      v,
+    }));
+    const pathD = pts.map((p, i) => `${i === 0 ? "M" : "L"}${p.x},${p.y}`).join(" ");
+    const areaD = pts.length > 1
+      ? `${pathD} L${pts[pts.length - 1].x},${pad.t + plotH} L${pts[0].x},${pad.t + plotH} Z`
+      : "";
+    const yTicks = [0, 0.25, 0.5, 0.75, 1].map((frac) => ({ frac, val: Math.round(trendsMax * frac) }));
+    const overlayPts = hasOverlay && overlayValues.length > 0
+      ? overlayValues.map((v, i) => ({
+          x: pad.l + (overlayValues.length > 1 ? (i / (overlayValues.length - 1)) * plotW : plotW / 2),
+          y: pad.t + plotH - (overlayMax > 0 ? (v / overlayMax) * plotH : 0),
+          v,
+        }))
+      : [];
+    const overlayPathD = overlayPts.length > 1
+      ? overlayPts.map((p, i) => `${i === 0 ? "M" : "L"}${p.x},${p.y}`).join(" ")
+      : "";
+    const overlayYTicks = [0, 0.25, 0.5, 0.75, 1].map((frac) => ({ frac, val: Math.round(overlayMax * frac) }));
+    return (
+      <div>
+        <svg viewBox={`0 0 ${svgW} ${svgH}`} className="w-full overflow-visible" style={{ maxHeight: 320 }}>
+          {/* Y-axis line */}
+          <line x1={pad.l} y1={pad.t} x2={pad.l} y2={pad.t + plotH} stroke="#d1d5db" strokeWidth={1} />
+          {/* Horizontal grid lines and y-axis labels */}
+          {yTicks.map(({ frac, val }) => {
+            const y = pad.t + plotH * (1 - frac);
+            return (
+              <g key={frac}>
+                <line x1={pad.l} y1={y} x2={hasOverlay ? svgW - 25 : svgW - pad.r} y2={y} stroke="#e5e5e5" strokeWidth={0.5} strokeDasharray="2,2" />
+                <text x={pad.l - 6} y={y + 3} textAnchor="end" fontSize={12} fill="#6b7280">{val}{trendsConfig.suffix}</text>
+              </g>
+            );
+          })}
+          {hasOverlay && (
+            <line x1={svgW - 25} y1={pad.t} x2={svgW - 25} y2={pad.t + plotH} stroke="#d1d5db" strokeWidth={1} />
+          )}
+          {hasOverlay && overlayYTicks.map(({ frac, val }) => {
+            const y = pad.t + plotH * (1 - frac);
+            return (
+              <text key={`ov-${frac}`} x={svgW - 25 + 6} y={y + 3} textAnchor="start" fontSize={12} fill="#6b7280">{val}{overlayConfig?.suffix ?? ""}</text>
+            );
+          })}
+          {areaD && <path d={areaD} fill={trendsConfig.color} opacity={0.07} />}
+          <path d={pathD} fill="none" stroke={trendsConfig.color} strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round" />
+          {pts.map((p, i) => (
+            <g key={i}>
+              <circle cx={p.x} cy={p.y} r={3} fill={trendsConfig.color} stroke="white" strokeWidth={1.5} />
+              <text x={p.x} y={Math.max(12, p.y - 10)} textAnchor="middle" fontSize={12} fontWeight={600} fill="#555">
+                {p.v}{trendsConfig.suffix}
+              </text>
+              <text x={p.x} y={svgH - 6} textAnchor="middle" fontSize={12} fill="#6b7280">{trendsLabels[i]}</text>
+            </g>
+          ))}
+          {hasOverlay && overlayPathD && (
+            <g>
+              <path d={overlayPathD} fill="none" stroke="var(--color-success)" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round" strokeDasharray="4 3" />
+              {overlayPts.map((p, i) => (
+                <g key={i}>
+                  <circle cx={p.x} cy={p.y} r={2} fill="var(--color-success)" stroke="white" strokeWidth={1} />
+                  <text x={p.x} y={Math.max(12, p.y - 8)} textAnchor="middle" fontSize={12} fontWeight={700} fill="var(--color-success)">
+                    {p.v}{overlayConfig?.suffix ?? ""}
+                  </text>
+                </g>
+              ))}
+            </g>
+          )}
+        </svg>
+      </div>
+    );
+  };
+
+  const trendsGroupByLabel = trendsGroupBy === "period" ? "Period" : trendsGroupBy === "body_shop" ? "Body Shop" : trendsGroupBy === "insurance_company" ? "Insurance" : "Lead Status";
+
+  const trendsTimePeriodLabel = trendsUseCustom
+    ? (trendsCustomStart && trendsCustomEnd ? formatDateRange({ key: "custom" }, trendsCustomStart, trendsCustomEnd) : "Custom")
+    : (presets.find((p) => p.key === trendsTimePresetKey)?.label ?? "");
+  const trendsMetricLabel = trendsConfig.suffix === "%" ? `${trendsConfig.label} %` : trendsConfig.label;
+  const overallConvRate = stats.total ? Math.round((stats.rented / stats.total) * 100) : 0;
+  const overallSuffix =
+    effectiveTrendsMetric === "conversionRate" && stats.total > 0
+      ? ` (Overall: ${overallConvRate}%)`
+      : "";
+  const trendsChartTitle =
+    (trendsOverlayMetric
+      ? `${trendsMetricLabel} + ${overlayConfig?.label ?? ""} by ${trendsGroupByLabel} over ${trendsTimePeriodLabel}`
+      : `${trendsMetricLabel} Grouped By ${trendsGroupByLabel} over ${trendsTimePeriodLabel}`) + overallSuffix;
+
+  const renderTrendsTable = () => {
+    if (isStackedView) {
+      return (
+        <div className="overflow-x-auto rounded-md">
+          <table className="w-full table-fixed text-sm">
+            <thead>
+              <tr className="bg-[var(--hertz-black)] text-xs text-white font-semibold uppercase tracking-wider">
+                <th className="px-4 py-3 text-center rounded-tl-md">Period</th>
+                {stackedSegmentKeys.map((k) => (
+                  <th key={k} className="px-4 py-3 text-center">
+                    {k}
+                  </th>
+                ))}
+                <th className="px-4 py-3 text-center rounded-tr-md">Total</th>
+              </tr>
+            </thead>
+            <tbody>
+              {trendsChartData.map((row, i) => (
+                <tr key={i} className="border-b border-[var(--neutral-100)] hover:bg-[var(--neutral-50)] transition-colors">
+                  <td className="py-2 px-4 text-center text-[var(--hertz-black)] font-medium">{row.period}</td>
+                  {stackedSegmentKeys.map((k) => (
+                    <td key={k} className="py-2 px-4 text-center font-medium" style={{ color: getSegmentColor(k) }}>
+                      {(row.segments?.[k] ?? 0)}%
+                    </td>
+                  ))}
+                  <td className="py-2 px-4 text-center font-semibold text-[var(--hertz-black)]">{row.total}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      );
+    }
+    const hasOverlay = !!trendsOverlayMetric && overlayConfig && overlayValues.length > 0;
+    return (
+      <div className="overflow-x-auto rounded-md">
+        <table className="w-full table-fixed text-sm">
+          <thead>
+            <tr className="bg-[var(--hertz-black)] text-xs text-white font-semibold uppercase tracking-wider">
+              <th className="px-4 py-3 text-center rounded-tl-md">{trendsGroupByLabel}</th>
+              <th className={`px-4 py-3 text-center ${!hasOverlay ? "rounded-tr-md" : ""}`}>{trendsConfig.label}</th>
+              {hasOverlay && (
+                <th className="px-4 py-3 text-center rounded-tr-md" style={{ color: "var(--color-success)" }}>{overlayConfig.label}</th>
+              )}
+            </tr>
+          </thead>
+          <tbody>
+            {trendsChartData.map((d, i) => (
+              <tr key={i} className="border-b border-[var(--neutral-100)] hover:bg-[var(--neutral-50)] transition-colors">
+                <td className="py-2 px-4 text-center text-[var(--hertz-black)] font-medium">{trendsLabels[i]}</td>
+                <td className="py-2 px-4 text-center font-semibold" style={{ color: trendsConfig.color }}>
+                  {trendsValues[i]}{trendsConfig.suffix}
+                </td>
+                {hasOverlay && (
+                  <td className="py-2 px-4 text-center font-semibold" style={{ color: "var(--color-success)" }}>
+                    {overlayValues[i]}{overlayConfig.suffix}
+                  </td>
+                )}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    );
+  };
+
+  return (
+    <div className="max-w-[var(--container-max)]">
       <AnimatePresence>
         {drilldownMetric && (
           <MetricDrilldownModal
@@ -617,8 +1102,8 @@ function BMDashboard({ navigateTo, selectLead, selectTask }) {
           />
         )}
       </AnimatePresence>
-      {/* Dashboard: Greeting + Summary + Stats + Trend */}
-      <div id="dashboard" className="mb-10 scroll-mt-4">
+      {/* Home — top of summary page, default landing */}
+      <div id="home" className="scroll-mt-4 mb-4">
         <motion.p
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
@@ -635,12 +1120,6 @@ function BMDashboard({ navigateTo, selectLead, selectTask }) {
         >
           {displayName}
         </motion.h1>
-        <motion.div
-          initial={{ scaleX: 0 }}
-          animate={{ scaleX: 1 }}
-          transition={{ delay: 0.2, duration: 0.35, ease: [0.4, 0, 0.2, 1] }}
-          className="w-16 h-1 bg-[var(--hertz-primary)] mt-3 origin-left"
-        />
         {insight && (
           <motion.p
             initial={{ opacity: 0, y: 4 }}
@@ -653,9 +1132,31 @@ function BMDashboard({ navigateTo, selectLead, selectTask }) {
         )}
       </div>
 
-      {/* Summary: Date presets + Stats */}
-      <div data-onboarding="summary">
-      <SectionHeader title="Summary" action={
+      {/* Work — Meeting Prep & Leaderboard modules, above Summary */}
+      <div id="work" className="scroll-mt-4 mb-4">
+        <SectionHeader title="Work" />
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <MeetingPrepModule
+            navigateTo={navigateTo}
+            leads={leads}
+            dateRange={dateRange}
+            branch={branch}
+            reduceMotion={reduceMotion}
+          />
+          <LeaderboardModule
+            navigateTo={navigateTo}
+            leads={leads}
+            branch={branch}
+            dateRange={dateRange}
+            reduceMotion={reduceMotion}
+          />
+        </div>
+      </div>
+
+      <div id="dashboard" data-onboarding="summary" className="scroll-mt-4 mb-4">
+      <SectionHeader
+        title="Summary"
+        action={
         <motion.button
           whileHover={!reduceMotion ? { scale: 1.05 } : {}}
           whileTap={!reduceMotion ? { scale: 0.95 } : {}}
@@ -667,14 +1168,14 @@ function BMDashboard({ navigateTo, selectLead, selectTask }) {
           Export
         </motion.button>
       } />
-      <div className="flex items-center gap-2 flex-nowrap mb-6 whitespace-nowrap overflow-x-auto">
+      <div className="flex items-center gap-2 flex-nowrap mb-4 whitespace-nowrap overflow-x-auto">
         <div className="flex items-center gap-1.5 flex-nowrap">
           {presets.map((p) => {
             const isActive = !useCustom && selectedPresetKey === p.key;
             return (
               <motion.button
                 key={p.key}
-                onClick={() => { setSelectedPresetKey(p.key); setUseCustom(false); setShowCustomCalendar(false); }}
+                onClick={() => { setSelectedPresetKey(p.key); setTrendsTimePresetKey(p.key); setUseCustom(false); setTrendsUseCustom(false); setShowCustomCalendar(false); setTrendsShowCustomCalendar(false); }}
                 whileHover={!reduceMotion ? { scale: 1.03 } : {}}
                 whileTap={!reduceMotion ? { scale: 0.97 } : {}}
                 className={`px-2.5 py-1 rounded-md text-xs font-medium transition-colors duration-200 cursor-pointer shrink-0 ${
@@ -690,7 +1191,7 @@ function BMDashboard({ navigateTo, selectLead, selectTask }) {
           <span className="text-[var(--neutral-200)] mx-0.5">|</span>
           <div ref={customAnchorRef} className="relative shrink-0">
             <motion.button
-              onClick={() => { setUseCustom(true); setShowCustomCalendar(true); }}
+              onClick={() => { setUseCustom(true); setTrendsUseCustom(true); setShowCustomCalendar(true); setTrendsShowCustomCalendar(true); }}
               whileHover={!reduceMotion ? { scale: 1.03 } : {}}
               whileTap={!reduceMotion ? { scale: 0.97 } : {}}
               className={`px-2.5 py-1 rounded-md text-xs font-medium transition-colors duration-200 cursor-pointer shrink-0 ${
@@ -704,7 +1205,7 @@ function BMDashboard({ navigateTo, selectLead, selectTask }) {
                 <DateRangeCalendar
                   start={customStart}
                   end={customEnd}
-                  onChange={({ start: s, end: e }) => { setCustomStart(s); setCustomEnd(e); }}
+                  onChange={({ start: s, end: e }) => { setCustomStart(s); setCustomEnd(e); setTrendsCustomStart(s); setTrendsCustomEnd(e); }}
                   onClose={() => setShowCustomCalendar(false)}
                   anchorRef={customAnchorRef}
                 />
@@ -713,36 +1214,28 @@ function BMDashboard({ navigateTo, selectLead, selectTask }) {
           </div>
           {rangeLabel && <span className="text-xs text-[var(--neutral-600)] ml-2 font-medium shrink-0">{rangeLabel}</span>}
         </div>
-        <span data-onboarding="view-trends">
-          <TrendsViewButton
-            onOpen={() => {
-              setShowTrendsModal(true);
-              window.dispatchEvent(new CustomEvent("onboarding:action", { detail: { actionType: "view_trends" } }));
-            }}
-          />
-        </span>
       </div>
 
       {/* Rate tiles */}
-      <div data-onboarding="metric-drilldown" className="grid grid-cols-3 gap-3 mb-3">
+      <div data-onboarding="metric-drilldown" className="grid grid-cols-3 gap-2 mb-4">
         {rateTiles.map((tile, i) => (
           <motion.div
             key={tile.label}
             {...cardAnim(i + 1, reduceMotion)}
             whileHover={!reduceMotion ? { y: -3, boxShadow: "0 12px 28px rgba(39,36,37,0.12), 0 4px 10px rgba(39,36,37,0.06)", transition: { duration: 0.25, ease: [0.4, 0, 0.2, 1] } } : {}}
             onClick={() => setDrilldownMetric(tile.metricKey)}
-            className="bg-white border border-[var(--neutral-200)] rounded-lg px-4 py-3 shadow-[var(--shadow-sm)] cursor-pointer group transition-[border-color] duration-200 hover:border-[var(--hertz-primary)]/40"
+            className="bg-neutral-700 border border-white/20 rounded-lg px-4 py-3 shadow-[var(--shadow-sm)] cursor-pointer group transition-[border-color] duration-200 hover:border-white/50"
           >
             <div className="flex items-center justify-between">
-              <p className="text-[10px] font-bold text-[var(--neutral-600)] uppercase tracking-wider">{tile.label}</p>
-              <svg className="w-3.5 h-3.5 text-[var(--neutral-400)] opacity-0 -translate-x-1 group-hover:opacity-100 group-hover:translate-x-0 transition-all duration-200" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
+              <p className="text-xs font-bold text-white uppercase tracking-wider">{tile.label}</p>
+              <svg className="w-3.5 h-3.5 text-white/70 opacity-0 -translate-x-1 group-hover:opacity-100 group-hover:translate-x-0 transition-all duration-200" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
             </div>
             <div className="flex items-baseline gap-2 mt-0.5">
-              <p className="text-xl font-extrabold tracking-tight text-[var(--hertz-black)]">{tile.value}</p>
+              <p className="text-xl font-extrabold tracking-tight text-white">{tile.value}</p>
               {comparisonRange != null && (
                 <span
                   className={`text-xs font-semibold px-1.5 py-0.5 rounded ${
-                    tile.relChange > 0 ? "bg-[#2E7D32]/15 text-[#2E7D32]" : tile.relChange < 0 ? "bg-[#C62828]/15 text-[#C62828]" : "bg-[var(--neutral-100)] text-[var(--neutral-600)]"
+                    tile.relChange > 0 ? "bg-emerald-400/25 text-emerald-200" : tile.relChange < 0 ? "bg-rose-400/25 text-rose-200" : "bg-white/15 text-white/70"
                   }`}
                 >
                   {tile.relChange > 0 ? "↑" : tile.relChange < 0 ? "↓" : "—"}
@@ -754,25 +1247,25 @@ function BMDashboard({ navigateTo, selectLead, selectTask }) {
         ))}
       </div>
       {/* Secondary tiles: Open Tasks, Task Completion Rate, Average Time for First Contact */}
-      <div className="grid grid-cols-3 gap-3 mb-6">
+      <div className="grid grid-cols-3 gap-2 mb-4">
         {secondaryTiles.map((tile, i) => (
           <motion.div
             key={tile.label}
             {...cardAnim(4 + i, reduceMotion)}
             whileHover={!reduceMotion ? { y: -3, boxShadow: "0 12px 28px rgba(39,36,37,0.12), 0 4px 10px rgba(39,36,37,0.06)", transition: { duration: 0.25, ease: [0.4, 0, 0.2, 1] } } : {}}
             onClick={() => setDrilldownMetric(tile.metricKey)}
-            className="bg-white border border-[var(--neutral-200)] rounded-lg px-4 py-3 shadow-[var(--shadow-sm)] cursor-pointer group transition-[border-color] duration-200 hover:border-[var(--hertz-primary)]/40"
+            className="bg-neutral-700 border border-white/20 rounded-lg px-4 py-3 shadow-[var(--shadow-sm)] cursor-pointer group transition-[border-color] duration-200 hover:border-white/50"
           >
             <div className="flex items-center justify-between">
-              <p className="text-[10px] font-bold text-[var(--neutral-600)] uppercase tracking-wider">{tile.label}</p>
-              <svg className="w-3.5 h-3.5 text-[var(--neutral-400)] opacity-0 -translate-x-1 group-hover:opacity-100 group-hover:translate-x-0 transition-all duration-200" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
+              <p className="text-xs font-bold text-white uppercase tracking-wider">{tile.label}</p>
+              <svg className="w-3.5 h-3.5 text-white/70 opacity-0 -translate-x-1 group-hover:opacity-100 group-hover:translate-x-0 transition-all duration-200" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
             </div>
             <div className="flex items-baseline gap-2 mt-0.5">
-              <p className={`text-xl font-extrabold tracking-tight ${tile.color}`}>{tile.value}</p>
+              <p className="text-xl font-extrabold tracking-tight text-white">{tile.value}</p>
               {comparisonRange != null && tile.relChange != null && (
                 <span
                   className={`text-xs font-semibold px-1.5 py-0.5 rounded ${
-                    tile.relChange > 0 ? "bg-[#2E7D32]/15 text-[#2E7D32]" : tile.relChange < 0 ? "bg-[#C62828]/15 text-[#C62828]" : "bg-[var(--neutral-100)] text-[var(--neutral-600)]"
+                    tile.relChange > 0 ? "bg-emerald-400/25 text-emerald-200" : tile.relChange < 0 ? "bg-rose-400/25 text-rose-200" : "bg-white/15 text-white/70"
                   }`}
                 >
                   {tile.lowerIsBetter
@@ -786,23 +1279,144 @@ function BMDashboard({ navigateTo, selectLead, selectTask }) {
         ))}
       </div>
 
-      {/* Horizontal stacked bar: Total Leads (rented, cancelled, unused) */}
+      {/* View Trends — full view inline under Summary metrics */}
       <motion.div
         {...cardAnim(3, reduceMotion)}
-        className="mb-6"
+        className="mb-4"
+        data-onboarding="view-trends"
       >
-        <LeadStackedBarChart
-          total={stats.total}
-          rented={stats.rented}
-          cancelled={stats.cancelled}
-          unused={stats.unused}
-          leads={pipelineLeads}
-        />
+        <div className="border border-[var(--neutral-200)] rounded-lg bg-white shadow-[var(--shadow-md)] overflow-hidden">
+          <div className="px-5 pt-5 pb-4">
+            <div className="flex flex-wrap items-end gap-2 mb-4">
+              <div className="shrink-0">
+                <p className="text-xs font-semibold text-[var(--neutral-600)] uppercase tracking-wider mb-1.5">Metric</p>
+                <select
+                  value={effectiveTrendsMetric}
+                  onChange={(e) => setSummaryTrendsMetric(e.target.value)}
+                  className="w-[10rem] px-2.5 py-1.5 border border-[var(--neutral-200)] rounded-lg text-sm font-medium text-[var(--hertz-black)] bg-white focus:outline-none focus:border-[var(--hertz-primary)] focus:ring-1 focus:ring-[var(--hertz-primary)] cursor-pointer"
+                >
+                  {summaryTrendsMetricOptions.map(([k, c]) => (
+                    <option key={k} value={k}>{c.label}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="shrink-0">
+                <p className="text-xs font-semibold text-[var(--neutral-600)] uppercase tracking-wider mb-1.5">Time filter</p>
+                <div className="flex items-center gap-1">
+                  <select
+                    value={trendsUseCustom ? "custom" : trendsTimePresetKey}
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      if (v === "custom") {
+                        setTrendsUseCustom(true);
+                        setUseCustom(true);
+                        setShowCustomCalendar(true);
+                        setTrendsShowCustomCalendar(true);
+                      } else {
+                        setTrendsUseCustom(false);
+                        setUseCustom(false);
+                        setTrendsShowCustomCalendar(false);
+                        setShowCustomCalendar(false);
+                        setTrendsTimePresetKey(v);
+                        setSelectedPresetKey(v);
+                      }
+                    }}
+                    className="w-[10rem] px-2.5 py-1.5 border border-[var(--neutral-200)] rounded-lg text-sm font-medium text-[var(--hertz-black)] bg-white focus:outline-none focus:border-[var(--hertz-primary)] focus:ring-1 focus:ring-[var(--hertz-primary)] cursor-pointer"
+                  >
+                    {presets.map((p) => (
+                      <option key={p.key} value={p.key}>{p.label}</option>
+                    ))}
+                    <option value="custom">Custom</option>
+                  </select>
+                  <div ref={trendsCustomAnchorRef} className="relative shrink-0">
+                    <AnimatePresence>
+                      {trendsUseCustom && trendsShowCustomCalendar && (
+                        <DateRangeCalendar
+                          start={trendsCustomStart}
+                          end={trendsCustomEnd}
+                          onChange={({ start: s, end: e }) => { setTrendsCustomStart(s); setTrendsCustomEnd(e); setCustomStart(s); setCustomEnd(e); }}
+                          onClose={() => setTrendsShowCustomCalendar(false)}
+                          anchorRef={trendsCustomAnchorRef}
+                        />
+                      )}
+                    </AnimatePresence>
+                    {trendsUseCustom && (
+                      <button
+                        type="button"
+                        onClick={() => setTrendsShowCustomCalendar((v) => !v)}
+                        className="px-2 py-1 rounded-md text-xs font-medium bg-[var(--neutral-50)] text-[var(--neutral-600)] border border-[var(--neutral-200)] hover:bg-[var(--neutral-100)]"
+                      >
+                        Pick dates
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </div>
+              <div className="shrink-0">
+                <p className="text-xs font-semibold text-[var(--neutral-600)] uppercase tracking-wider mb-1.5">Group by</p>
+                <select
+                  value={trendsGroupBy}
+                  onChange={(e) => setTrendsGroupBy(e.target.value)}
+                  className="w-[10rem] px-2.5 py-1.5 border border-[var(--neutral-200)] rounded-lg text-sm font-medium text-[var(--hertz-black)] bg-white focus:outline-none focus:border-[var(--hertz-primary)] focus:ring-1 focus:ring-[var(--hertz-primary)] cursor-pointer"
+                >
+                  <option value="period">Period</option>
+                  <option value="body_shop">Body Shop</option>
+                  <option value="insurance_company">Insurance</option>
+                  <option value="status">Lead Status</option>
+                </select>
+              </div>
+              <div className="shrink-0">
+                <p className="text-xs font-semibold text-[var(--neutral-600)] uppercase tracking-wider mb-1.5">Add secondary metric</p>
+                <select
+                  value={trendsOverlayMetric}
+                  onChange={(e) => setTrendsOverlayMetric(e.target.value)}
+                  className="w-[10rem] px-2.5 py-1.5 border border-[var(--neutral-200)] rounded-lg text-sm font-medium text-[var(--hertz-black)] bg-white focus:outline-none focus:border-[var(--hertz-primary)] focus:ring-1 focus:ring-[var(--hertz-primary)] cursor-pointer"
+                  title="Add a secondary data series as a line overlay"
+                >
+                  {overlayOptions.map((o) => (
+                    <option key={o.value || "none"} value={o.value}>{o.label}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="shrink-0 ml-auto">
+                <p className="text-xs font-semibold text-[var(--neutral-600)] uppercase tracking-wider mb-1.5">Chart type</p>
+                <div className="flex items-center gap-0.5 rounded-lg border border-[var(--neutral-200)] p-0.5 bg-[var(--neutral-50)]">
+                  {trendsChartTypeBtn("bar",
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" /></svg>,
+                    "Bar"
+                  )}
+                  {!trendsOverlayMetric && trendsGroupBy === "period" && trendsChartTypeBtn("line",
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><polyline points="4,16 8,10 13,13 20,6" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" /><polyline points="17,6 20,6 20,9" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" /></svg>,
+                    "Line"
+                  )}
+                  {trendsChartTypeBtn("table",
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h18M3 14h18M3 6h18M3 18h18" /></svg>,
+                    "Table"
+                  )}
+                </div>
+              </div>
+            </div>
+            <div className="border border-[var(--neutral-200)] rounded-lg p-4 bg-[var(--neutral-50)]/30 overflow-visible min-h-[340px]">
+              <p className="text-xs font-bold text-[var(--neutral-600)] tracking-wider mb-8">{trendsChartTitle}</p>
+              {trendsChartData.length === 0 ? (
+                <p className="text-sm text-[var(--neutral-600)] py-8 text-center">
+                  {dateRange ? "No data for this time range and branch." : "Select a time range to see the trend."}
+                </p>
+              ) : summaryTrendsChartType === "bar" ? (
+                renderTrendsBarChart()
+              ) : summaryTrendsChartType === "line" ? (
+                renderTrendsLineChart()
+              ) : (
+                renderTrendsTable()
+              )}
+            </div>
+          </div>
+        </div>
       </motion.div>
       </div>
 
       {/* My Leads */}
-      <div id="lead-pipeline" className="scroll-mt-4 mb-10" data-onboarding="my-leads">
+      <div id="lead-pipeline" className="scroll-mt-4 mb-6" data-onboarding="my-leads">
         <SectionHeader title="My Leads" action={
           <motion.button
             whileHover={!reduceMotion ? { scale: 1.05 } : {}}
@@ -854,11 +1468,11 @@ function BMDashboard({ navigateTo, selectLead, selectTask }) {
           </div>
         </div>
       {/* Filter bar */}
-      <div className="flex items-center gap-2 flex-wrap mb-4 w-full">
+      <div className="flex items-center gap-2 flex-nowrap mb-4 w-full overflow-x-auto">
         <div className="flex items-center gap-1.5 shrink-0">
           <label className="text-xs text-[var(--neutral-600)] font-medium whitespace-nowrap">Status</label>
           <select
-            className="px-2 py-1 border border-[var(--neutral-200)] rounded text-xs text-[var(--hertz-black)] bg-white focus:outline-none focus:border-[var(--hertz-primary)] min-w-[5rem]"
+            className="px-2.5 py-1.5 border border-[var(--neutral-200)] rounded-lg text-xs text-[var(--hertz-black)] bg-white focus:outline-none focus:border-[var(--hertz-primary)] min-w-[5rem]"
             value={leadsStatusFilter}
             onChange={(e) => setLeadsStatusFilter(e.target.value)}
           >
@@ -871,7 +1485,7 @@ function BMDashboard({ navigateTo, selectLead, selectTask }) {
         <div className="flex items-center gap-1.5 shrink-0">
           <label className="text-xs text-[var(--neutral-600)] font-medium whitespace-nowrap">Insurance</label>
           <select
-            className="px-2 py-1 border border-[var(--neutral-200)] rounded text-xs text-[var(--hertz-black)] bg-white focus:outline-none focus:border-[var(--hertz-primary)] min-w-[5rem]"
+            className="px-2.5 py-1.5 border border-[var(--neutral-200)] rounded-lg text-xs text-[var(--hertz-black)] bg-white focus:outline-none focus:border-[var(--hertz-primary)] min-w-[5rem]"
             value={leadsInsuranceFilter}
             onChange={(e) => setLeadsInsuranceFilter(e.target.value)}
           >
@@ -884,7 +1498,7 @@ function BMDashboard({ navigateTo, selectLead, selectTask }) {
         <div className="flex items-center gap-1.5 shrink-0">
           <label className="text-xs text-[var(--neutral-600)] font-medium whitespace-nowrap" title="Cancel Reason">Reason</label>
           <select
-            className="px-2 py-1 border border-[var(--neutral-200)] rounded text-xs text-[var(--hertz-black)] bg-white focus:outline-none focus:border-[var(--hertz-primary)] min-w-[6rem]"
+            className="px-2.5 py-1.5 border border-[var(--neutral-200)] rounded-lg text-xs text-[var(--hertz-black)] bg-white focus:outline-none focus:border-[var(--hertz-primary)] min-w-[6rem]"
             value={leadsCancelReasonFilter}
             onChange={(e) => setLeadsCancelReasonFilter(e.target.value)}
           >
@@ -897,7 +1511,7 @@ function BMDashboard({ navigateTo, selectLead, selectTask }) {
         <div className="flex items-center gap-1.5 shrink-0">
           <label className="text-xs text-[var(--neutral-600)] font-medium whitespace-nowrap">Days</label>
           <select
-            className="px-2 py-1 border border-[var(--neutral-200)] rounded text-xs text-[var(--hertz-black)] bg-white focus:outline-none focus:border-[var(--hertz-primary)] min-w-[5.5rem]"
+            className="px-2.5 py-1.5 border border-[var(--neutral-200)] rounded-lg text-xs text-[var(--hertz-black)] bg-white focus:outline-none focus:border-[var(--hertz-primary)] min-w-[5.5rem]"
             value={leadsDaysOpenFilter}
             onChange={(e) => setLeadsDaysOpenFilter(e.target.value)}
           >
@@ -910,7 +1524,7 @@ function BMDashboard({ navigateTo, selectLead, selectTask }) {
         <div className="flex items-center gap-1.5 shrink-0">
           <label className="text-xs text-[var(--neutral-600)] font-medium whitespace-nowrap" title="Time to Contact">Contact</label>
           <select
-            className="px-2 py-1 border border-[var(--neutral-200)] rounded text-xs text-[var(--hertz-black)] bg-white focus:outline-none focus:border-[var(--hertz-primary)] min-w-[5rem]"
+            className="px-2.5 py-1.5 border border-[var(--neutral-200)] rounded-lg text-xs text-[var(--hertz-black)] bg-white focus:outline-none focus:border-[var(--hertz-primary)] min-w-[5rem]"
             value={leadsTimeToContactFilter}
             onChange={(e) => setLeadsTimeToContactFilter(e.target.value)}
           >
@@ -923,7 +1537,7 @@ function BMDashboard({ navigateTo, selectLead, selectTask }) {
         <div className="flex items-center gap-1.5 shrink-0">
           <label className="text-xs text-[var(--neutral-600)] font-medium whitespace-nowrap" title="First contact by">Contact By</label>
           <select
-            className="px-2 py-1 border border-[var(--neutral-200)] rounded text-xs text-[var(--hertz-black)] bg-white focus:outline-none focus:border-[var(--hertz-primary)] min-w-[5rem]"
+            className="px-2.5 py-1.5 border border-[var(--neutral-200)] rounded-lg text-xs text-[var(--hertz-black)] bg-white focus:outline-none focus:border-[var(--hertz-primary)] min-w-[5rem]"
             value={leadsFirstContactByFilter}
             onChange={(e) => setLeadsFirstContactByFilter(e.target.value)}
           >
@@ -943,7 +1557,7 @@ function BMDashboard({ navigateTo, selectLead, selectTask }) {
               setLeadsTimeToContactFilter("All");
               setLeadsFirstContactByFilter("All");
             }}
-            className="px-2 py-1 rounded text-xs font-medium text-[var(--neutral-600)] hover:bg-[var(--neutral-100)] transition-colors cursor-pointer shrink-0"
+            className="px-2.5 py-1.5 rounded-lg text-xs font-medium text-[var(--neutral-600)] hover:bg-[var(--neutral-100)] transition-colors cursor-pointer shrink-0"
           >
             Clear
           </button>
@@ -952,6 +1566,7 @@ function BMDashboard({ navigateTo, selectLead, selectTask }) {
           {filteredBranchLeads.length} of {branchLeads.length} leads
         </span>
       </div>
+      <div className="w-full border border-[var(--neutral-200)] rounded-lg overflow-hidden shadow-[var(--shadow-md)]">
       <AnimatePresence mode="wait">
       {leadsViewMode === "table" ? (
       <motion.div
@@ -959,26 +1574,26 @@ function BMDashboard({ navigateTo, selectLead, selectTask }) {
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
-        className="border-2 border-[#E5E5E5] rounded-lg overflow-hidden shadow-[0_2px_8px_rgba(39,36,37,0.08)]"
+        className="overflow-hidden"
       >
-        <table className="w-full table-fixed text-sm">
+        <table className="w-full table-fixed border-collapse text-sm">
           <thead>
-            <tr className="bg-[#272425] text-center text-xs text-white font-semibold uppercase tracking-wider">
-              <th className="px-3 py-4 w-[9%] break-words">Received Date</th>
-              <th className="px-3 py-4 w-[12%] break-words">Confirmation #</th>
-              <th className="px-3 py-4 w-[10%] break-words">Customer</th>
-              <th className="px-3 py-4 w-[7%] break-words">Status</th>
-              <th className="px-3 py-4 w-[7%] break-words">Days Open</th>
-              <th className="px-3 py-4 w-[11%] break-words">First Contact Date</th>
-              <th className="px-3 py-4 w-[10%] break-words">Time to Contact</th>
-              <th className="px-3 py-4 w-[14%] break-words">Cancel Reason</th>
-              <th className="px-3 py-4 w-[20%] break-words">Comments</th>
+            <tr className="bg-[var(--hertz-black)] text-center text-xs text-white font-semibold uppercase tracking-wider">
+              <th className="px-4 py-3 w-[10%] overflow-hidden">Received Date</th>
+              <th className="px-4 py-3 w-[11%] overflow-hidden">Confirmation #</th>
+              <th className="px-4 py-3 w-[12%] overflow-hidden">Customer</th>
+              <th className="px-4 py-3 w-[8%] overflow-hidden">Status</th>
+              <th className="px-4 py-3 w-[8%] overflow-hidden">Days Open</th>
+              <th className="px-4 py-3 w-[11%] overflow-hidden">First Contact Date</th>
+              <th className="px-4 py-3 w-[10%] overflow-hidden">Time to Contact</th>
+              <th className="px-4 py-3 w-[14%] overflow-hidden">Cancel Reason</th>
+              <th className="px-4 py-3 w-[16%] overflow-hidden">Comments</th>
             </tr>
           </thead>
           <tbody>
             {filteredBranchLeads.length === 0 ? (
               <tr>
-                <td colSpan={9} className="px-3 py-16 text-center">
+                <td colSpan={9} className="px-4 py-16 text-center">
                   <div className="flex flex-col items-center gap-2">
                     <div className="w-14 h-14 rounded-2xl bg-[var(--hertz-primary)]/10 flex items-center justify-center text-[var(--hertz-primary)]">
                       {branchLeads.length === 0 ? (
@@ -997,9 +1612,10 @@ function BMDashboard({ navigateTo, selectLead, selectTask }) {
                 </td>
               </tr>
             ) : (
-              filteredBranchLeads.map((lead, i) => {
+              displayLeads.map((lead, i) => {
                 const org = getHierarchyForBranch(lead.branch);
                 const row = leadToHlesRow(lead, org);
+                const isClosedRented = lead.status === "Rented" && lead.enrichmentComplete;
                 return (
                   <motion.tr
                     key={lead.id}
@@ -1007,22 +1623,30 @@ function BMDashboard({ navigateTo, selectLead, selectTask }) {
                     animate={{ opacity: 1 }}
                     transition={{ delay: i * 0.03 }}
                     data-onboarding={i === 0 ? "lead-row" : undefined}
-                    className="border-t border-[var(--neutral-200)] cursor-pointer hover:bg-[var(--neutral-50)] transition-colors duration-150"
+                    className={`border-t border-[var(--neutral-200)] cursor-pointer hover:bg-[var(--neutral-50)] transition-colors duration-150 ${
+                      isClosedRented ? "bg-[var(--neutral-100)] text-[var(--neutral-500)] [&_td]:line-through" : ""
+                    }`}
                     onClick={() => {
                       selectLead(lead.id);
                       navigateTo("bm-lead-detail");
                       window.dispatchEvent(new CustomEvent("onboarding:action", { detail: { actionType: "click_lead" } }));
                     }}
                   >
-                    <td className="px-3 py-4 text-center text-[var(--neutral-600)] whitespace-nowrap">{row.INIT_DT_FINAL}</td>
-                    <td className="px-3 py-4 text-center text-[var(--hertz-black)] font-medium whitespace-nowrap">{row.CONFIRM_NUM}</td>
-                    <td className="px-3 py-4 text-center font-semibold text-[var(--hertz-black)]">{row.RENTER_LAST}</td>
-                    <td className="px-3 py-4 text-center"><StatusBadge status={row.STATUS} /></td>
-                    <td className="px-3 py-4 text-center text-[var(--neutral-600)]">{row.DAYS_OPEN}</td>
-                    <td className="px-3 py-4 text-center text-[var(--neutral-600)] whitespace-nowrap">{row.DT_FROM_ALPHA1}</td>
-                    <td className="px-3 py-4 text-center text-[var(--neutral-600)]">{row.TIME_TO_CONTACT}</td>
-                    <td className="px-3 py-4 text-center text-[var(--neutral-600)] break-words">{row.CANCEL_REASON}</td>
-                    <td className="px-3 py-4 text-center text-[var(--neutral-600)] break-words" title={row.COMMENTS}>{row.COMMENTS}</td>
+                    <td className="px-4 py-3 text-center text-sm text-[var(--neutral-600)] whitespace-nowrap min-w-0 overflow-hidden">{row.INIT_DT_FINAL}</td>
+                    <td className="px-4 py-3 text-center text-sm text-[var(--hertz-black)] font-medium whitespace-nowrap min-w-0 overflow-hidden">{row.CONFIRM_NUM}</td>
+                    <td className="px-4 py-3 text-center text-sm font-semibold text-[var(--hertz-black)] min-w-0 overflow-hidden">
+                      <span className="block truncate" title={row.RENTER_LAST}>{row.RENTER_LAST}</span>
+                    </td>
+                    <td className="px-4 py-3 text-center min-w-0 overflow-hidden"><StatusBadge status={row.STATUS} /></td>
+                    <td className="px-4 py-3 text-center text-sm text-[var(--neutral-600)] min-w-0 overflow-hidden">{row.DAYS_OPEN}</td>
+                    <td className="px-4 py-3 text-center text-sm text-[var(--neutral-600)] whitespace-nowrap min-w-0 overflow-hidden">{row.DT_FROM_ALPHA1}</td>
+                    <td className="px-4 py-3 text-center text-sm text-[var(--neutral-600)] min-w-0 overflow-hidden">{row.TIME_TO_CONTACT}</td>
+                    <td className="px-4 py-3 text-center text-sm text-[var(--neutral-600)] min-w-0 overflow-hidden">
+                      <span className="block truncate" title={row.CANCEL_REASON}>{row.CANCEL_REASON}</span>
+                    </td>
+                    <td className="px-4 py-3 text-center text-sm text-[var(--neutral-600)] min-w-0 overflow-hidden">
+                      <span className="block truncate" title={row.COMMENTS}>{row.COMMENTS}</span>
+                    </td>
                   </motion.tr>
                 );
               })
@@ -1036,7 +1660,7 @@ function BMDashboard({ navigateTo, selectLead, selectTask }) {
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
-        className="border-2 border-[#E5E5E5] rounded-lg overflow-hidden shadow-[0_2px_8px_rgba(39,36,37,0.08)] p-4"
+        className="overflow-hidden p-4"
       >
         {filteredBranchLeads.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-16">
@@ -1056,7 +1680,7 @@ function BMDashboard({ navigateTo, selectLead, selectTask }) {
           </div>
         ) : (
           <LeadsBoardView
-            leads={filteredBranchLeads}
+            leads={displayLeads}
             onLeadClick={(lead) => {
               selectLead(lead.id);
               navigateTo("bm-lead-detail");
@@ -1069,10 +1693,21 @@ function BMDashboard({ navigateTo, selectLead, selectTask }) {
       </motion.div>
       )}
       </AnimatePresence>
+      {(hasMoreLeads || leadsExpanded) && (
+        <motion.button
+          whileHover={!reduceMotion ? { scale: 1.01 } : {}}
+          whileTap={!reduceMotion ? { scale: 0.99 } : {}}
+          onClick={() => setLeadsExpanded(!leadsExpanded)}
+          className="w-full py-3 text-sm font-medium text-[var(--neutral-600)] bg-[var(--neutral-200)] hover:bg-[var(--neutral-300)] transition-colors border-t border-[var(--neutral-200)]"
+        >
+          {leadsExpanded ? "Show less" : `View all (${filteredBranchLeads.length} leads)`}
+        </motion.button>
+      )}
+      </div>
       </div>
 
       {/* Open Tasks */}
-      <div id="open-tasks" className="scroll-mt-4">
+      <div id="open-tasks" className="scroll-mt-4 mb-6">
       <SectionHeader title="Open Tasks" action={
         <motion.button
           whileHover={!reduceMotion ? { scale: 1.05 } : {}}
@@ -1088,11 +1723,11 @@ function BMDashboard({ navigateTo, selectLead, selectTask }) {
         </motion.button>
       } />
       {/* Task filter bar */}
-      <div className="flex items-center gap-2 flex-wrap mb-4 w-full">
+      <div className="flex items-center gap-2 flex-nowrap mb-4 w-full overflow-x-auto">
         <div className="flex items-center gap-1.5 shrink-0">
           <label className="text-xs text-[var(--neutral-600)] font-medium whitespace-nowrap">Status</label>
           <select
-            className="px-2 py-1 border border-[var(--neutral-200)] rounded text-xs text-[var(--hertz-black)] bg-white focus:outline-none focus:border-[var(--hertz-primary)] min-w-[5rem]"
+            className="px-2.5 py-1.5 border border-[var(--neutral-200)] rounded-lg text-xs text-[var(--hertz-black)] bg-white focus:outline-none focus:border-[var(--hertz-primary)] min-w-[5rem]"
             value={tasksStatusFilter}
             onChange={(e) => setTasksStatusFilter(e.target.value)}
           >
@@ -1105,7 +1740,7 @@ function BMDashboard({ navigateTo, selectLead, selectTask }) {
         <div className="flex items-center gap-1.5 shrink-0">
           <label className="text-xs text-[var(--neutral-600)] font-medium whitespace-nowrap">Priority</label>
           <select
-            className="px-2 py-1 border border-[var(--neutral-200)] rounded text-xs text-[var(--hertz-black)] bg-white focus:outline-none focus:border-[var(--hertz-primary)] min-w-[5rem]"
+            className="px-2.5 py-1.5 border border-[var(--neutral-200)] rounded-lg text-xs text-[var(--hertz-black)] bg-white focus:outline-none focus:border-[var(--hertz-primary)] min-w-[5rem]"
             value={tasksPriorityFilter}
             onChange={(e) => setTasksPriorityFilter(e.target.value)}
           >
@@ -1116,22 +1751,9 @@ function BMDashboard({ navigateTo, selectLead, selectTask }) {
           </select>
         </div>
         <div className="flex items-center gap-1.5 shrink-0">
-          <label className="text-xs text-[var(--neutral-600)] font-medium whitespace-nowrap">Created By</label>
-          <select
-            className="px-2 py-1 border border-[var(--neutral-200)] rounded text-xs text-[var(--hertz-black)] bg-white focus:outline-none focus:border-[var(--hertz-primary)] min-w-[5rem]"
-            value={tasksCreatedByFilter}
-            onChange={(e) => setTasksCreatedByFilter(e.target.value)}
-          >
-            <option value="All">All</option>
-            {tasksFilterOptions.createdBys.map((cb) => (
-              <option key={cb} value={cb}>{cb}</option>
-            ))}
-          </select>
-        </div>
-        <div className="flex items-center gap-1.5 shrink-0">
           <label className="text-xs text-[var(--neutral-600)] font-medium whitespace-nowrap">Due Date</label>
           <select
-            className="px-2 py-1 border border-[var(--neutral-200)] rounded text-xs text-[var(--hertz-black)] bg-white focus:outline-none focus:border-[var(--hertz-primary)] min-w-[6rem]"
+            className="px-2.5 py-1.5 border border-[var(--neutral-200)] rounded-lg text-xs text-[var(--hertz-black)] bg-white focus:outline-none focus:border-[var(--hertz-primary)] min-w-[6rem]"
             value={tasksDueDateFilter}
             onChange={(e) => setTasksDueDateFilter(e.target.value)}
           >
@@ -1141,101 +1763,139 @@ function BMDashboard({ navigateTo, selectLead, selectTask }) {
             ))}
           </select>
         </div>
-        {(tasksStatusFilter !== "All" || tasksPriorityFilter !== "All" || tasksCreatedByFilter !== "All" || tasksDueDateFilter !== "All") && (
+        {(tasksStatusFilter !== "All" || tasksPriorityFilter !== "All" || tasksDueDateFilter !== "All") && (
           <button
             onClick={() => {
               setTasksStatusFilter("All");
               setTasksPriorityFilter("All");
-              setTasksCreatedByFilter("All");
               setTasksDueDateFilter("All");
             }}
-            className="px-2 py-1 rounded text-xs font-medium text-[var(--neutral-600)] hover:bg-[var(--neutral-100)] transition-colors cursor-pointer shrink-0"
+            className="px-2.5 py-1.5 rounded-lg text-xs font-medium text-[var(--neutral-600)] hover:bg-[var(--neutral-100)] transition-colors cursor-pointer shrink-0"
           >
             Clear
           </button>
         )}
-        <span className="ml-auto text-xs text-[var(--neutral-600)] shrink-0 whitespace-nowrap">
-          {filteredBranchTasks.length} of {branchTasks.length} tasks
-        </span>
       </div>
-      <div className="border-2 border-[var(--neutral-200)] rounded-lg overflow-x-auto shadow-[var(--shadow-md)]">
-        <table className="w-full min-w-[900px] table-fixed text-sm">
+      <div className="w-full border border-[var(--neutral-200)] rounded-lg overflow-hidden shadow-[var(--shadow-md)]">
+        <table className="w-full table-fixed border-collapse text-sm">
           <thead>
-            <tr className="bg-[var(--hertz-black)] text-left text-xs text-white font-semibold uppercase tracking-wider">
-              <th className="px-4 py-4 w-[18%] text-left">Title</th>
-              <th className="px-4 py-4 w-[7%] text-center">Lead ID</th>
-              <th className="px-4 py-4 w-[12%] text-left">Lead</th>
-              <th className="px-4 py-4 w-[22%] text-left">Description</th>
-              <th className="px-4 py-4 w-[10%] text-left">Due Date</th>
-              <th className="px-4 py-4 w-[10%] text-center">Priority</th>
-              <th className="px-4 py-4 w-[11%] text-center">Status</th>
-              <th className="px-4 py-4 w-[10%] text-center">Created By</th>
+            <tr className="bg-[var(--hertz-black)] text-center text-xs text-white font-semibold uppercase tracking-wider">
+              <th className="px-4 py-3 w-12 overflow-hidden" title="Complete">
+                <span className="sr-only">Done</span>
+              </th>
+              <th className="px-4 py-3 w-[14%] whitespace-nowrap overflow-hidden">Confirmation #</th>
+              <th className="px-4 py-3 w-[38%] overflow-hidden">Title</th>
+              <th className="px-4 py-3 w-[9%] whitespace-nowrap overflow-hidden">Due Date</th>
+              <th className="px-4 py-3 w-[10%] whitespace-nowrap overflow-hidden">Priority</th>
+              <th className="px-4 py-3 w-[11%] whitespace-nowrap overflow-hidden">Task Status</th>
+              <th className="px-4 py-3 w-[18%] whitespace-nowrap overflow-hidden">Task Notes</th>
             </tr>
           </thead>
           <tbody>
-            {branchTasks.length === 0 ? (
+            {filteredBranchTasks.length === 0 ? (
               <tr>
-                <td colSpan={8} className="px-4 py-16 text-center">
+                <td colSpan={7} className="px-4 py-16 text-center">
                   <div className="flex flex-col items-center gap-2">
-                    <div className="w-14 h-14 rounded-2xl bg-[#2E7D32]/10 flex items-center justify-center text-[#2E7D32]">
+                    <div className="w-14 h-14 rounded-2xl bg-[var(--color-success)]/10 flex items-center justify-center text-[var(--color-success)]">
                       <svg className="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M11.35 3.836c-.065.21-.1.433-.1.664 0 .414.336.75.75.75h4.5a.75.75 0 00.75-.75 2.25 2.25 0 00-.1-.664m-5.8 0A2.251 2.251 0 0113.5 2.25H15a2.25 2.25 0 011.65 1.586m-5.8 0c-.376.023-.75.05-1.124.08C9.095 4.01 8.25 4.973 8.25 6.108V8.25m8.9-4.414c.376.023.75.05 1.124.08 1.131.094 1.976 1.057 1.976 2.192V16.5A2.25 2.25 0 0118 18.75h-2.25m-7.5-10.5H4.875c-.621 0-1.125.504-1.125 1.125v11.25c0 .621.504 1.125 1.125 1.125h9.75c.621 0 1.125-.504 1.125-1.125V18.75m-7.5-10.5h6.375c.621 0 1.125.504 1.125 1.125v9.375m-8.25-3l1.5 1.5 3-3.75" />
                       </svg>
                     </div>
-                    <p className="text-[var(--hertz-black)] font-bold text-sm mt-1">All tasks done</p>
-                    <p className="text-sm text-[var(--neutral-600)] max-w-[220px]">Your task list is clear. Great job staying on top of things.</p>
+                    <p className="text-[var(--hertz-black)] font-bold text-sm mt-1">{branchTasks.length === 0 ? "All tasks done" : "No matching tasks"}</p>
+                    <p className="text-sm text-[var(--neutral-600)] max-w-[220px]">{branchTasks.length === 0 ? "Your task list is clear. Great job staying on top of things." : "Try widening your filters to see more results."}</p>
                   </div>
                 </td>
               </tr>
             ) : (
-              branchTasks.map((task, i) => (
-                <motion.tr
-                  key={task.id}
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  transition={{ delay: i * 0.03 }}
-                  onClick={() => { selectTask?.(task.id); navigateTo("bm-task-detail"); }}
-                  className="border-t border-[var(--neutral-200)] hover:bg-[var(--neutral-50)] transition-colors duration-150 cursor-pointer"
-                >
-                  <td className="px-4 py-4 font-semibold text-[var(--hertz-black)] min-w-0">
-                    <span className="block truncate" title={task.title}>{task.title}</span>
-                  </td>
-                  <td className="px-4 py-4 text-center text-[var(--neutral-600)] font-mono text-xs">{task.leadId ?? "—"}</td>
-                  <td className="px-4 py-4 text-[var(--neutral-600)] min-w-0">
-                    <span className="block truncate" title={task.lead?.customer ?? getLeadById(leads ?? [], task.leadId)?.customer ?? undefined}>
-                      {(task.lead?.customer ?? getLeadById(leads ?? [], task.leadId)?.customer) ?? "—"}
-                    </span>
-                  </td>
-                  <td className="px-4 py-4 text-[var(--neutral-600)] text-xs min-w-0">
-                    <span className="block truncate" title={task.description ?? undefined}>{task.description ?? "—"}</span>
-                  </td>
-                  <td className="px-4 py-4 text-[var(--neutral-600)] whitespace-nowrap">{task.dueDate ?? "—"}</td>
-                  <td className="px-4 py-4 text-center">
-                    <span className={`px-2.5 py-1 rounded-md text-xs font-semibold ${
-                      task.priority === "Urgent" ? "bg-[var(--color-error)]/15 text-[var(--color-error)]" :
-                      task.priority === "High" ? "bg-amber-100 text-amber-800" :
-                      "bg-[var(--neutral-100)] text-[var(--neutral-600)]"
-                    }`}>
-                      {task.priority ?? "Normal"}
-                    </span>
-                  </td>
-                  <td className="px-5 py-4 text-center">
-                    <span className={`px-2.5 py-1 rounded-md text-xs font-semibold ${
-                      task.status === "Done" ? "bg-[var(--color-success)]/15 text-[var(--color-success)]" :
-                      task.status === "In Progress" ? "bg-[var(--hertz-primary)]/25 text-[var(--hertz-black)]" :
-                      "bg-[var(--color-error)]/15 text-[var(--color-error)]"
-                    }`}>
-                      {task.status}
-                    </span>
-                  </td>
-                  <td className="px-4 py-4 text-center text-[var(--neutral-600)]">{task.createdBy ?? "—"}</td>
-                </motion.tr>
-              ))
+              displayTasks.map((task, i) => {
+                const isDone = task.status === "Done";
+                const confirmationNum = task.lead?.reservationId ?? getLeadById(leads ?? [], task.leadId)?.reservationId ?? "—";
+                const handleCheckboxClick = (e) => {
+                  e.stopPropagation();
+                  const newStatus = isDone ? "Open" : "Done";
+                  if (useSupabase && updateTaskStatus) {
+                    updateTaskStatus(task.id, newStatus).then(() => {
+                      fetchTasksForBranch(branch).then(setBranchTasks).catch(() => {});
+                    });
+                  } else {
+                    setBranchTasks((prev) =>
+                      prev.map((t) => (t.id === task.id ? { ...t, status: newStatus } : t))
+                    );
+                  }
+                };
+                return (
+                  <motion.tr
+                    key={task.id}
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    transition={{ delay: i * 0.03 }}
+                    onClick={() => { selectTask?.(task.id); navigateTo("bm-task-detail"); }}
+                    className={`border-t border-[var(--neutral-200)] hover:bg-[var(--neutral-50)] transition-colors duration-150 cursor-pointer ${
+                      isDone ? "bg-[var(--neutral-100)] text-[var(--neutral-500)] [&_td:nth-child(n+2)]:line-through" : ""
+                    }`}
+                  >
+                    <td className="px-4 py-3 text-center w-12 min-w-0 overflow-hidden" onClick={(e) => e.stopPropagation()}>
+                      <button
+                        type="button"
+                        onClick={handleCheckboxClick}
+                        className={`w-5 h-5 rounded-full border-2 flex items-center justify-center transition-colors cursor-pointer shrink-0 mx-auto ${
+                          isDone
+                            ? "bg-[var(--color-success)] border-[var(--color-success)] text-white"
+                            : "border-[var(--neutral-300)] hover:border-[var(--neutral-400)]"
+                        }`}
+                        aria-label={isDone ? "Mark as open" : "Mark as done"}
+                        title={isDone ? "Mark as open" : "Mark as done"}
+                      >
+                        {isDone && (
+                          <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2.5}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                          </svg>
+                        )}
+                      </button>
+                    </td>
+                    <td className="px-4 py-3 text-center text-sm text-[var(--neutral-600)] font-mono min-w-0 overflow-hidden">
+                      <span className="block truncate" title={confirmationNum}>{confirmationNum}</span>
+                    </td>
+                    <td className="px-4 py-3 text-center text-sm font-semibold min-w-0 overflow-hidden">
+                      <span className="block truncate" title={task.title}>{task.title}</span>
+                    </td>
+                    <td className="px-4 py-3 text-center text-sm whitespace-nowrap text-[var(--neutral-600)] min-w-0 overflow-hidden">{task.dueDate ?? "—"}</td>
+                    <td className="px-4 py-3 text-center min-w-0 overflow-hidden">
+                      <span className={`px-2 py-0.5 rounded text-xs font-semibold whitespace-nowrap ${
+                        task.priority === "High" ? "bg-amber-100 text-amber-800" :
+                        "bg-[var(--neutral-100)] text-[var(--neutral-600)]"
+                      }`}>
+                        {task.priority ?? "Medium"}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 text-center min-w-0 overflow-hidden">
+                      <span className="px-2 py-0.5 rounded text-xs font-medium bg-[var(--neutral-200)] text-[var(--neutral-600)] whitespace-nowrap">
+                        {task.status}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 text-center text-sm text-[var(--neutral-600)] min-w-0 overflow-hidden">
+                      <span className="block truncate" title={task.notes ?? task.notesLog?.[0]?.note ?? ""}>
+                        {task.notes ?? task.notesLog?.[0]?.note ?? "—"}
+                      </span>
+                    </td>
+                  </motion.tr>
+                );
+              })
             )}
           </tbody>
         </table>
+        {(hasMoreTasks || tasksExpanded) && (
+          <motion.button
+            whileHover={!reduceMotion ? { scale: 1.01 } : {}}
+            whileTap={!reduceMotion ? { scale: 0.99 } : {}}
+            onClick={() => setTasksExpanded(!tasksExpanded)}
+            className="w-full py-3 text-sm font-medium text-[var(--neutral-600)] bg-[var(--neutral-200)] hover:bg-[var(--neutral-300)] transition-colors border-t border-[var(--neutral-200)]"
+          >
+            {tasksExpanded ? "Show less" : `View all (${filteredBranchTasks.length} tasks)`}
+          </motion.button>
+        )}
       </div>
-      </div>
+    </div>
     </div>
   );
 }
@@ -1252,25 +1912,25 @@ export function BMDashboardInbox({ navigateTo, selectLead }) {
   return (
     <>
       <SectionHeader title="Inbox" />
-      <p className="text-sm text-[#6E6E6E] mb-5">
+      <p className="text-sm text-[var(--neutral-600)] mb-5">
         Messages from your General Manager tied to specific reservations. Click a row to review and take action.
       </p>
-      <div className="border-2 border-[#E5E5E5] rounded-lg overflow-hidden shadow-[0_2px_8px_rgba(39,36,37,0.08)] max-h-48 overflow-y-auto">
+      <div className="border border-[var(--neutral-200)] rounded-lg overflow-hidden shadow-[var(--shadow-md)] max-h-48 overflow-y-auto">
         <table className="w-full text-sm">
           <thead>
-            <tr className="bg-[#272425] text-left text-xs text-white font-semibold uppercase tracking-wider">
-              <th className="px-5 py-2">Customer</th>
-              <th className="px-5 py-2">Reservation ID</th>
-              <th className="px-5 py-2">Branch</th>
-              <th className="px-5 py-2">Status</th>
-              <th className="px-5 py-2">Days Open</th>
-              <th className="px-5 py-2">GM Directive</th>
+            <tr className="bg-[var(--hertz-black)] text-left text-xs text-white font-semibold uppercase tracking-wider">
+              <th className="px-4 py-3">Customer</th>
+              <th className="px-4 py-3">Reservation ID</th>
+              <th className="px-4 py-3">Branch</th>
+              <th className="px-4 py-3">Status</th>
+              <th className="px-4 py-3">Days Open</th>
+              <th className="px-4 py-3">GM Directive</th>
             </tr>
           </thead>
           <tbody>
             {directiveLeads.length === 0 ? (
               <tr>
-                <td colSpan={6} className="px-5 py-10 text-center">
+                <td colSpan={6} className="px-4 py-16 text-center">
                   <div className="flex flex-col items-center gap-2">
                     <div className="w-14 h-14 rounded-2xl bg-[var(--hertz-primary)]/10 flex items-center justify-center text-[var(--hertz-primary)]">
                       <svg className="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1292,12 +1952,12 @@ export function BMDashboardInbox({ navigateTo, selectLead }) {
                   onClick={() => handleClick(lead)}
                   className="border-t border-[var(--neutral-200)] cursor-pointer hover:bg-[var(--neutral-50)] transition-colors duration-150"
                 >
-                  <td className="px-5 py-2 font-semibold text-[var(--hertz-black)]">{lead.customer}</td>
-                  <td className="px-5 py-2 font-mono text-xs text-[var(--neutral-600)]">{lead.reservationId}</td>
-                  <td className="px-5 py-2 text-[var(--neutral-600)]">{lead.branch}</td>
-                  <td className="px-5 py-2"><StatusBadge status={lead.status} /></td>
-                  <td className="px-5 py-2 text-[var(--neutral-600)]">{lead.daysOpen}d</td>
-                  <td className="px-5 py-2 text-[var(--neutral-600)] max-w-xs truncate">{lead.gmDirective}</td>
+                  <td className="px-4 py-3 text-sm font-semibold text-[var(--hertz-black)]">{lead.customer}</td>
+                  <td className="px-4 py-3 text-sm font-mono text-[var(--neutral-600)]">{lead.reservationId}</td>
+                  <td className="px-4 py-3 text-sm text-[var(--neutral-600)]">{lead.branch}</td>
+                  <td className="px-4 py-3"><StatusBadge status={lead.status} /></td>
+                  <td className="px-4 py-3 text-sm text-[var(--neutral-600)]">{lead.daysOpen}d</td>
+                  <td className="px-4 py-3 text-sm text-[var(--neutral-600)] max-w-xs truncate">{lead.gmDirective}</td>
                 </motion.tr>
               ))
             )}
@@ -1308,153 +1968,15 @@ export function BMDashboardInbox({ navigateTo, selectLead }) {
   );
 }
 
-function TimeToContactCard() {
-  const ttc = getTimeToContactStats();
-  const segments = [
-    { label: "< 30m", value: ttc.within30m, color: "#2E7D32" },
-    { label: "30m–1h", value: ttc.within1h, color: "#FFD100" },
-    { label: "1–3h", value: ttc.within3h, color: "#1A1A1A" },
-    { label: "> 3h", value: ttc.over3h, color: "#C62828" },
-  ];
-  return (
-    <motion.div {...cardAnim(3)} className="border border-[#E6E6E6] rounded-lg p-5">
-      <p className="text-xs font-bold text-[#6E6E6E] uppercase tracking-wide mb-3">Time to First Contact</p>
-      <div className="flex h-4 rounded overflow-hidden mb-3">
-        {segments.map((s) => (
-          <div key={s.label} style={{ width: `${s.value}%`, backgroundColor: s.color }} />
-        ))}
-      </div>
-      <div className="grid grid-cols-4 gap-2">
-        {segments.map((s) => (
-          <div key={s.label} className="text-center">
-            <p className="text-lg font-bold text-[var(--hertz-black)]">{s.value}%</p>
-            <p className="text-[10px] text-[#6E6E6E]">{s.label}</p>
-          </div>
-        ))}
-      </div>
-    </motion.div>
-  );
-}
-
-function ContactSourceCard() {
-  const src = getContactSourceStats();
-  return (
-    <motion.div {...cardAnim(4)} className="border border-[#E6E6E6] rounded-lg p-5">
-      <p className="text-xs font-bold text-[#6E6E6E] uppercase tracking-wide mb-3">First Contact Source</p>
-      <div className="flex gap-4">
-        <div className="flex-1 text-center">
-          <p className="text-2xl font-bold text-[var(--hertz-black)]">{src.branchContactRate}%</p>
-          <p className="text-xs text-[#6E6E6E]">Branch</p>
-        </div>
-        <div className="w-px bg-[#E6E6E6]" />
-        <div className="flex-1 text-center">
-          <p className="text-2xl font-bold text-[var(--hertz-black)]">{src.hrdContactRate}%</p>
-          <p className="text-xs text-[#6E6E6E]">HRD (OKC)</p>
-        </div>
-      </div>
-    </motion.div>
-  );
-}
-
-function GMDashboard({ navigateTo }) {
-  const { leads } = useData();
-  const stats = getGMStats(leads);
-  const trends = getGMTrends();
-  const cards = [
-    { label: "Cancelled Unreviewed", value: stats.cancelledUnreviewed, color: "text-[#C62828]" },
-    { label: "Unused Overdue (5+ days)", value: stats.unusedOverdue, color: "text-[#FFD100]" },
-    { label: "Comment Compliance", value: `${stats.enrichmentCompliance}%`, color: "text-[#2E7D32]" },
-  ];
-
-  const actions = [
-    { label: "View Compliance", view: "gm-compliance" },
-    { label: "Review Cancelled", view: "gm-cancelled" },
-    { label: "Spot Check", view: "gm-spot-check" },
-  ];
-
+function GMDashboardPage({ navigateTo }) {
   return (
     <div>
-      <div id="dashboard" className="scroll-mt-4">
-        <SectionHeader title="This Week · Feb 17–21" />
-        <div className="grid grid-cols-3 gap-4 mb-4">
-          {cards.map((card, i) => (
-            <motion.div
-              key={card.label}
-              {...cardAnim(i)}
-              className="border border-[#E6E6E6] rounded-lg p-5"
-            >
-              <p className="text-xs font-bold text-[#6E6E6E] uppercase tracking-wide">{card.label}</p>
-              <p className="text-3xl font-bold mt-1 text-[var(--hertz-black)]">{card.value}</p>
-            </motion.div>
-          ))}
-        </div>
-
-        <div className="grid grid-cols-2 gap-4 mb-8">
-          <TimeToContactCard />
-          <ContactSourceCard />
-        </div>
-
-        <SectionHeader title="4-Week Trend" />
-        <div className="grid grid-cols-3 gap-4 mb-8">
-          <motion.div {...cardAnim(0)}>
-            <MiniBarChart
-              data={trends.cancelledUnreviewed}
-              labels={trends.labels}
-              color="#C62828"
-              label="Cancelled Unreviewed"
-            />
-          </motion.div>
-          <motion.div {...cardAnim(1)}>
-            <MiniBarChart
-              data={trends.commentCompliance}
-              labels={trends.labels}
-              color="#2E7D32"
-              label="Comment Compliance"
-              suffix="%"
-            />
-          </motion.div>
-          <motion.div {...cardAnim(2)}>
-            <MiniBarChart
-              data={trends.zoneConversionRate}
-              labels={trends.labels}
-              color="#1A1A1A"
-              label="Zone Conversion Rate"
-              suffix="%"
-            />
-          </motion.div>
-        </div>
-
-        <motion.div {...cardAnim(3)} className="flex gap-3 mb-12">
-          {actions.map((a) => (
-            <button
-              key={a.view}
-              onClick={() => navigateTo(a.view)}
-              className="px-4 py-2 bg-[#FFD100] text-[#1A1A1A] rounded font-medium text-sm hover:bg-[#E6BC00] transition-colors cursor-pointer"
-            >
-              {a.label}
-            </button>
-          ))}
-        </motion.div>
+      <div id="dashboard" className="scroll-mt-4 mb-12">
+        <InteractiveGMDashboard navigateTo={navigateTo} />
       </div>
 
-      <div id="compliance" className="scroll-mt-4 mb-12">
+      <div id="compliance" className="scroll-mt-4">
         <InteractiveComplianceDashboard />
-      </div>
-
-      <div id="cancelled-leads" className="scroll-mt-4 mb-12">
-        <InteractiveCancelledLeads />
-      </div>
-
-      <div id="unused-leads" className="scroll-mt-4 mb-12">
-        <InteractiveUnusedLeads />
-      </div>
-
-      <div id="lead-review" className="scroll-mt-4 mb-12">
-        <InteractiveThreeColumn />
-      </div>
-
-      <div id="spot-check" className="scroll-mt-4">
-        <InteractiveSpotCheck />
       </div>
     </div>
   );
@@ -1473,17 +1995,20 @@ function AdminDashboard({ navigateTo }) {
           key={card.view}
           {...cardAnim(i)}
           onClick={() => navigateTo(card.view)}
-          className="border border-[#E6E6E6] rounded-lg p-6 text-left hover:border-[#FFD100] transition-colors cursor-pointer"
+          className="border border-[var(--neutral-200)] rounded-lg p-6 text-left hover:border-[var(--hertz-primary)] transition-colors cursor-pointer"
         >
-          <p className="text-lg font-semibold text-[#1A1A1A] mb-1">{card.label}</p>
-          <p className="text-sm text-[#6E6E6E]">{card.desc}</p>
+          <p className="text-lg font-semibold text-[var(--hertz-black)] mb-1">{card.label}</p>
+          <p className="text-sm text-[var(--neutral-600)]">{card.desc}</p>
         </motion.button>
       ))}
     </div>
   );
 }
 
+// BM sections in scroll order on Summary page: Home → Work → Summary → My Leads → Open Tasks
 const BM_SECTION_MAP = {
+  "bm-home": "home",
+  "bm-work": "work",
   "bm-dashboard": "dashboard",
   "bm-leads": "lead-pipeline",
   "bm-todo": "open-tasks",
@@ -1492,10 +2017,6 @@ const BM_SECTION_MAP = {
 const GM_SECTION_MAP = {
   "gm-dashboard": "dashboard",
   "gm-compliance": "compliance",
-  "gm-cancelled": "cancelled-leads",
-  "gm-unused": "unused-leads",
-  "gm-review": "lead-review",
-  "gm-spot-check": "spot-check",
 };
 
 // Reverse: sectionId -> viewId for scroll-based highlight
@@ -1507,16 +2028,19 @@ const GM_SECTION_TO_VIEW = Object.fromEntries(
 );
 
 export default function InteractiveDashboard() {
-  const { role, activeView, navigateTo, setScrollActiveView, selectLead, selectTask } = useApp();
+  const { role, activeView, navigateTo, setScrollActiveView, setScrollDirection, selectLead, selectTask } = useApp();
+  const isInitialMount = useRef(true);
 
   useEffect(() => {
+    if (isInitialMount.current) {
+      isInitialMount.current = false;
+      return;
+    }
     const sectionMap = role === "bm" ? BM_SECTION_MAP : role === "gm" ? GM_SECTION_MAP : null;
     const sectionId = sectionMap?.[activeView];
     if (sectionId) {
       const el = document.getElementById(sectionId);
-      if (el) {
-        el.scrollIntoView({ behavior: "smooth", block: "start" });
-      }
+      if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
     }
   }, [role, activeView]);
 
@@ -1528,22 +2052,82 @@ export default function InteractiveDashboard() {
     if (!scrollRoot) return;
 
     const sectionIds = Object.keys(sectionToView);
+    const lastViewId = sectionToView[sectionIds[sectionIds.length - 1]];
+    const firstViewId = sectionToView[sectionIds[0]];
+    const secondViewId = sectionIds.length > 1 ? sectionToView[sectionIds[1]] : null;
     const observed = [];
+    let hasUserScrolled = false;
+    let lastScrollTop = scrollRoot.scrollTop;
+
+    setScrollActiveView(firstViewId);
+
+    const updateActiveFromScroll = () => {
+      const { scrollTop, clientHeight, scrollHeight } = scrollRoot;
+      const atTop = scrollTop < 8;
+      const atBottom = scrollTop + clientHeight >= scrollHeight - 50;
+      if (atTop && firstViewId) {
+        setScrollActiveView(firstViewId);
+        return true;
+      }
+      if (atBottom && lastViewId) {
+        setScrollActiveView(lastViewId);
+        return true;
+      }
+      return false;
+    };
+
+    const computeActiveFromSections = () => {
+      const { scrollTop, clientHeight, scrollHeight } = scrollRoot;
+      if (scrollTop < 8) return firstViewId;
+      if (scrollTop + clientHeight >= scrollHeight - 50) return lastViewId;
+      const rootRect = scrollRoot.getBoundingClientRect();
+      const candidates = sectionIds
+        .map((id) => {
+          const el = document.getElementById(id);
+          if (!el) return null;
+          const rect = el.getBoundingClientRect();
+          if (rect.bottom <= rootRect.top || rect.top >= rootRect.bottom) return null;
+          return { id, viewId: sectionToView[id], top: rect.top };
+        })
+        .filter(Boolean);
+      if (candidates.length === 0) return firstViewId;
+      const inViewport = candidates.filter((c) => c.top >= 0);
+      let topmost;
+      if (inViewport.length > 0) {
+        inViewport.sort((a, b) => a.top - b.top);
+        topmost = inViewport[0];
+      } else {
+        candidates.sort((a, b) => b.top - a.top);
+        topmost = candidates[0];
+      }
+      if (role === "bm" && topmost.viewId === "bm-home" && topmost.top < 0 && secondViewId) {
+        return secondViewId;
+      }
+      return topmost.viewId;
+    };
 
     const observer = new IntersectionObserver(
       (entries) => {
-        const intersecting = entries.filter((e) => e.isIntersecting);
-        if (intersecting.length === 0) return;
-        const sorted = intersecting
-          .map((e) => ({ entry: e, viewId: sectionToView[e.target.id] }))
-          .filter((x) => x.viewId)
-          .sort((a, b) => a.entry.boundingClientRect.top - b.entry.boundingClientRect.top);
-        if (sorted.length > 0) {
-          setScrollActiveView(sorted[0].viewId);
-        }
+        if (updateActiveFromScroll()) return;
+        if (!hasUserScrolled) return;
+        const viewId = computeActiveFromSections();
+        if (viewId) setScrollActiveView(viewId);
       },
-      { root: scrollRoot, rootMargin: "0px 0px -60% 0px", threshold: 0 }
+      { root: scrollRoot, rootMargin: "0px 0px -35% 0px", threshold: 0 }
     );
+
+    const handleScroll = () => {
+      hasUserScrolled = true;
+      const { scrollTop } = scrollRoot;
+      const delta = scrollTop - lastScrollTop;
+      if (Math.abs(delta) > 2) {
+        setScrollDirection(delta > 0 ? "down" : "up");
+      }
+      lastScrollTop = scrollTop;
+      if (updateActiveFromScroll()) return;
+      const viewId = computeActiveFromSections();
+      if (viewId) setScrollActiveView(viewId);
+    };
 
     sectionIds.forEach((id) => {
       const el = document.getElementById(id);
@@ -1553,10 +2137,13 @@ export default function InteractiveDashboard() {
       }
     });
 
+    scrollRoot.addEventListener("scroll", handleScroll, { passive: true });
+
     return () => {
+      scrollRoot.removeEventListener("scroll", handleScroll);
       observed.forEach((el) => observer.unobserve(el));
     };
-  }, [role, setScrollActiveView]);
+  }, [role, setScrollActiveView, setScrollDirection]);
 
   return (
     <div>
@@ -1568,7 +2155,7 @@ export default function InteractiveDashboard() {
             <h1 className="text-3xl font-extrabold text-[var(--hertz-black)] tracking-tight">{roleMeta[role]?.label} Dashboard</h1>
             <div className="w-16 h-1 bg-[var(--hertz-primary)] mt-3 rounded-full" />
           </div>
-          {role === "gm" && <GMDashboard navigateTo={navigateTo} />}
+          {role === "gm" && <GMDashboardPage navigateTo={navigateTo} />}
           {role === "admin" && <AdminDashboard navigateTo={navigateTo} />}
         </>
       )}

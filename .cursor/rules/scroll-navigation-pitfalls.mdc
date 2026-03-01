@@ -1,0 +1,36 @@
+---
+description: Scroll-based navigation and sidebar highlighting pitfalls learned from BM build
+alwaysApply: true
+---
+
+# Scroll & Navigation Pitfalls
+
+## IntersectionObserver Fragility (6+ bugs in BM build)
+
+The scroll-highlight system has 6 coupled variables. All must be aligned or the sidebar shows the wrong section:
+
+1. **DOM section `id` attributes** — must exist on the correct container element, not a child/wrapper
+2. **Section map key order** — must match physical DOM top-to-bottom order
+3. **`firstViewId`** — must use `roleDefaults[role]`, never hardcode
+4. **`rootMargin`** — `"0px 0px -60% 0px"` means only top 40% of viewport counts as intersection
+5. **Bottom-of-page detection** — short final sections (like Open Tasks) may never intersect the top 40%; need a `scrollTop + clientHeight >= scrollHeight - threshold` fallback that force-sets the last section
+6. **Chevron collapse direction** — track `scrollDirection` in AppContext; keep chevrons open when scrolling down, collapse only on scroll up
+
+## Common Mistakes
+
+- **Wrong `id` on wrapper div**: If a greeting banner has `id="dashboard"` but sits above the actual dashboard section, the observer picks the banner first. Always put the `id` on the section's outermost meaningful container.
+- **Sidebar not scrollable**: If the sidebar nav list doesn't have `overflow-y-auto` + `min-h-0`, nav items below the fold are invisible. Add `useEffect` to scroll active item into view.
+- **Nested scroll containers break refresh**: `AppLayout` has `<main overflow-y-auto>` and `InteractiveShell` has `#dashboard-scroll-root overflow-y-auto`. On refresh, both need `scrollTop = 0`. Set `history.scrollRestoration = "manual"` in AppLayout and scroll all containers to top.
+
+## Default Landing Page (Protected by Rule)
+
+`roleDefaults.bm` = `"bm-dashboard"` (Summary). This was changed back to `"bm-meeting-prep"` at least **twice** by edits fixing scroll issues. The `summary-default-landing.mdc` rule exists to prevent this. Apply the same pattern for GM: decide the GM default and protect it with the rule.
+
+## When Building GM Scroll Sections
+
+1. Define `GM_SECTION_MAP` with keys in DOM order
+2. Add section `id` attributes to the correct DOM elements
+3. Set `firstViewId` from `roleDefaults["gm"]`
+4. Test: last section highlights when scrolled to bottom
+5. Test: refresh lands on correct section with correct highlight
+6. Test: sidebar chevrons expand/collapse correctly on scroll direction change

@@ -72,7 +72,7 @@ const TASKS_COLUMNS = [
   { label: "Customer", key: "customerName" },
   { label: "Description", accessor: (t) => t.description ?? "" },
   { label: "Due Date", accessor: (t) => t.dueDate ?? "" },
-  { label: "Priority", accessor: (t) => t.priority ?? "Normal" },
+  { label: "Priority", accessor: (t) => t.priority ?? "Medium" },
   { label: "Status", key: "status" },
   { label: "Created By", accessor: (t) => t.createdBy ?? "" },
   { label: "Created At", accessor: (t) => t.createdAt ?? "" },

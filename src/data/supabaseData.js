@@ -23,6 +23,7 @@ function leadFromRow(row) {
     mismatchReason: row.mismatch_reason ?? null,
     gmDirective: row.gm_directive,
     insuranceCompany: row.insurance_company,
+    bodyShop: row.body_shop,
     timeToFirstContact: row.time_to_first_contact,
     firstContactBy: row.first_contact_by,
     timeToCancel: row.time_to_cancel,
@@ -32,6 +33,8 @@ function leadFromRow(row) {
     enrichment: row.enrichment,
     enrichmentLog: row.enrichment_log ?? [],
     initDtFinal: row.init_dt_final ?? null,
+    weekOf: row.week_of ?? null,
+    contactRange: row.contact_range ?? null,
   };
 }
 
@@ -291,7 +294,7 @@ function taskFromRow(row) {
     dueDate: row.due_date ? formatTaskDate(row.due_date) : null,
     dueDateRaw: row.due_date,
     status: row.status,
-    priority: row.priority ?? "Normal",
+    priority: row.priority ?? "Medium",
     assignedTo: row.assigned_to,
     assignedToName: row.assigned_to_name ?? "—",
     createdBy: row.created_by_name ?? "—",

@@ -33,6 +33,7 @@ function LeadCard({ lead, org, onLeadClick, isDragging, dataOnboarding }) {
   });
   const style = transform ? { transform: CSS.Translate.toString(transform) } : undefined;
   const zone = org?.zone ?? "—";
+  const isClosedRented = lead.status === "Rented" && lead.enrichmentComplete;
 
   return (
     <motion.div
@@ -43,9 +44,9 @@ function LeadCard({ lead, org, onLeadClick, isDragging, dataOnboarding }) {
       {...(dataOnboarding ? { "data-onboarding": dataOnboarding } : {})}
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
-      className={`bg-white rounded-lg border border-[var(--neutral-200)] p-3 shadow-[var(--shadow-sm)] cursor-grab active:cursor-grabbing hover:shadow-md hover:border-[var(--neutral-300)] transition-all duration-150 ${
-        isDragging ? "opacity-60 shadow-lg ring-2 ring-[var(--hertz-primary)]" : ""
-      }`}
+      className={`rounded-lg border border-[var(--neutral-200)] p-3 shadow-[var(--shadow-sm)] cursor-grab active:cursor-grabbing hover:shadow-md hover:border-[var(--neutral-300)] transition-all duration-150 ${
+        isClosedRented ? "bg-[var(--neutral-100)] text-[var(--neutral-500)] line-through" : "bg-white"
+      } ${isDragging ? "opacity-60 shadow-lg ring-2 ring-[var(--hertz-primary)]" : ""}`}
       onClick={(e) => {
         e.stopPropagation();
         onLeadClick?.(lead);
@@ -176,7 +177,16 @@ export default function LeadsBoardView({ leads, onLeadClick, getHierarchyForBran
   );
 
   const leadsByStatus = COLUMNS.reduce((acc, col) => {
-    acc[col.key] = leads.filter((l) => l.status === col.key);
+    let columnLeads = leads.filter((l) => l.status === col.key);
+    // Rented + enrichment complete go to bottom
+    if (col.key === "Rented") {
+      columnLeads = [...columnLeads].sort((a, b) => {
+        const aClosed = a.enrichmentComplete;
+        const bClosed = b.enrichmentComplete;
+        return (aClosed ? 1 : 0) - (bClosed ? 1 : 0);
+      });
+    }
+    acc[col.key] = columnLeads;
     return acc;
   }, {});
 

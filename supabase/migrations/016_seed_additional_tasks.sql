@@ -22,21 +22,21 @@ FROM (VALUES
 
   ('Contact Maria Santos — overdue enrichment',
    '5-day-old cancellation with no enrichment. First contact was by HRD — branch needs to follow up.',
-   NULL, '2026-02-25', 'Open', 'Urgent',
+   NULL, '2026-02-25', 'Open', 'High',
    'HL-2026-001243', 'gm_assigned', 'D. Williams', 'Sarah Chen',
    '[]', '2026-02-22T11:00:00Z', NULL),
 
   ('Close out Chris Nguyen — competitor loss',
    'Customer found a better rate. Confirm no win-back opportunity and close.',
    'Spoke with customer — confirmed they signed with competitor. No further action.',
-   '2026-02-24', 'Done', 'Normal',
+   '2026-02-24', 'Done', 'Medium',
    'HL-2026-001244', 'gm_assigned', 'D. Williams', 'Sarah Chen',
    '[{"time":"Feb 23, 3:00 PM","timestamp":1740348000000,"author":"Sarah Chen","note":"Spoke with customer — confirmed they signed with competitor. No further action."}]',
    '2026-02-22T16:00:00Z', '2026-02-23T15:05:00Z'),
 
   ('Follow up on Rachel Green callback',
    'Voicemail left — customer hasn''t called back in 5 days. Try alternate contact method.',
-   NULL, '2026-02-28', 'Open', 'Normal',
+   NULL, '2026-02-28', 'Open', 'Medium',
    'HL-2026-001245', 'gm_assigned', 'D. Williams', 'M. Johnson',
    '[]', '2026-02-26T09:30:00Z', NULL),
 
@@ -49,14 +49,14 @@ FROM (VALUES
 
   ('Auto: Sarah Chen — late first contact',
    'Translog shows first contact 4d 2h after reservation. Review and add notes.',
-   NULL, '2026-02-27', 'Open', 'Normal',
+   NULL, '2026-02-27', 'Open', 'Medium',
    'HL-2026-001243', 'auto_translog', 'System', 'Sarah Chen',
    '[]', '2026-02-24T06:00:00Z', NULL),
 
   -- Long Beach
   ('Auto: Emily Davis — no activity detected',
    'Lead open 8 days with zero translog entries. Immediate action required.',
-   NULL, '2026-02-24', 'Open', 'Urgent',
+   NULL, '2026-02-24', 'Open', 'High',
    'HL-2026-001237', 'auto_other', 'System', 'T. Rodriguez',
    '[]', '2026-02-23T07:00:00Z', NULL),
 
@@ -70,21 +70,21 @@ FROM (VALUES
 
   ('Auto: John Martinez — enrichment stale',
    'Enrichment completed 10+ days ago with follow-up date passed. Review and update.',
-   NULL, '2026-02-26', 'Open', 'Normal',
+   NULL, '2026-02-26', 'Open', 'Medium',
    'HL-2026-001234', 'auto_other', 'System', 'J. Smith',
    '[]', '2026-02-25T06:00:00Z', NULL),
 
   -- Pasadena
   ('Resolve Michael Torres enrichment mismatch',
    'Lead flagged — no BM comments despite cancelled status. Complete enrichment ASAP.',
-   NULL, '2026-02-27', 'In Progress', 'Urgent',
+   NULL, '2026-02-27', 'In Progress', 'High',
    'HL-2026-001236', 'gm_assigned', 'D. Williams', 'A. Garcia',
    '[{"time":"Feb 26, 9:30 AM","timestamp":1740570600000,"author":"A. Garcia","note":"Attempted to reach customer, line busy. Will retry this afternoon."}]',
    '2026-02-25T08:00:00Z', NULL),
 
   ('Auto: Michael Torres — late first contact flag',
    'First contact was 5d 2h after reservation and made by HRD, not branch. Document reason.',
-   NULL, '2026-03-01', 'Open', 'Normal',
+   NULL, '2026-03-01', 'Open', 'Medium',
    'HL-2026-001236', 'auto_translog', 'System', 'A. Garcia',
    '[]', '2026-02-26T06:00:00Z', NULL),
 
@@ -106,7 +106,7 @@ FROM (VALUES
 
   ('Escalate David Park — insurance verification pending',
    'Rental completed but insurance documentation incomplete. Follow up with customer.',
-   NULL, '2026-03-01', 'In Progress', 'Normal',
+   NULL, '2026-03-01', 'In Progress', 'Medium',
    'HL-2026-001240', 'gm_assigned', 'D. Williams', 'M. Johnson',
    '[{"time":"Feb 24, 2:00 PM","timestamp":1740412800000,"author":"M. Johnson","note":"Left voicemail requesting insurance card upload. Set 48h reminder."}]',
    '2026-02-24T09:00:00Z', NULL),

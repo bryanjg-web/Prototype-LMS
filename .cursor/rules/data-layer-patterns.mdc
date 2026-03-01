@@ -1,0 +1,41 @@
+---
+description: Data layer patterns — dual sources, selectors, persistence, and common pitfalls
+alwaysApply: true
+---
+
+# Data Layer Patterns
+
+## Dual Data Source Architecture
+
+The app supports mock data (`mockData.js` + `localStorage`) and Supabase (`supabaseData.js`) via `VITE_USE_SUPABASE=true`. Both must stay in sync.
+
+**Common pitfall**: Adding a field to `mockData.js` but forgetting the Supabase mapping in `supabaseData.js` (or vice versa). When adding new fields:
+1. Add to `mockData.js` exports
+2. Add to `supabaseData.js` row mapper (`leadFromRow`, `taskFromRow`, etc.)
+3. Add fallback defaults in the mapper (e.g., `row.priority ?? "Medium"`)
+4. Add Supabase migration for the DB column
+
+## Selector Pattern (`demoSelectors.js`)
+
+All derived/computed data lives in `src/selectors/demoSelectors.js` as pure functions. Never compute derived data in components.
+
+**Fixed demo time**: `NOW = new Date("2026-02-22T09:00:00")` — all date calculations use this, not `new Date()`. This ensures consistent "this week" across sessions. Apply the same fixed time for GM selectors.
+
+**Two different data pipelines exist**:
+- Summary charts use `getChartData()` / `getTrendsChartDataStacked()` from synthetic `dailyTrends` data
+- Meeting Prep charts use `getMetricTrendByWeek()` from real lead records
+- These can show **different numbers** for the same metric. Document which pipeline each GM view should use.
+
+## Persistence: Append-Only vs Overwrite
+
+**Lesson learned the hard way**: Task notes originally used a single `notes` text column (overwrite). User expected append-only with timestamps. Fix required a new `notes_log` JSONB column and migration.
+
+**Rule**: Any field that accumulates history (notes, enrichment changes, activity log) should use a JSONB array from the start: `[{ time, author, content, ... }]`. Never use a single text column for data that users expect to accumulate.
+
+## Filter Defaults
+
+Always default to the **least restrictive filter** (`"All"`). Defaulting to `"Unused"` caused an empty-state bug where users saw zero leads. If a specific filter is desired, verify the filtered set is non-empty first.
+
+## Seed Migration Gotcha
+
+Editing already-applied seed migrations (`011`, `014`, `016`) only works on fresh DB rebuilds. For existing databases, always create a **new** migration that updates in place (e.g., `019_task_priority_high_medium_low.sql` to fix priorities in existing rows).

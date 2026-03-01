@@ -1,4 +1,5 @@
-import { motion } from "framer-motion";
+import { useState } from "react";
+import { motion, AnimatePresence } from "framer-motion";
 import StatusBadge from "./StatusBadge";
 import TranslogTimeline from "./TranslogTimeline";
 import { getHierarchyForBranch, getMismatchReason } from "../selectors/demoSelectors";
@@ -6,6 +7,10 @@ import { getHierarchyForBranch, getMismatchReason } from "../selectors/demoSelec
 export default function LeadDetail({ lead, enrichmentSlot, contactSlot, contactButtonsSlot, tasksSlot, contactActivities = [] }) {
   const hierarchy = getHierarchyForBranch(lead.branch);
   const mismatchReason = getMismatchReason(lead);
+  const [translogExpanded, setTranslogExpanded] = useState(false);
+
+  const hasActivity = (lead.translog?.length ?? 0) > 0 || (lead.enrichmentLog?.length ?? 0) > 0 || (contactActivities?.length ?? 0) > 0;
+  const activityCount = (lead.translog?.length ?? 0) + (lead.enrichmentLog?.length ?? 0) + (contactActivities?.length ?? 0);
 
   return (
     <motion.div
@@ -15,27 +20,28 @@ export default function LeadDetail({ lead, enrichmentSlot, contactSlot, contactB
       className="grid grid-cols-2 gap-8 h-full"
     >
       <div className="space-y-6">
-        <div>
-          <h2 className="text-2xl font-bold text-[#1A1A1A]">{lead.customer}</h2>
-          <p className="text-sm text-[#6E6E6E] font-mono">{lead.reservationId}</p>
-        </div>
-
         {lead.mismatch && mismatchReason && (
           <motion.div
             initial={{ opacity: 0, y: -4 }}
             animate={{ opacity: 1, y: 0 }}
-            className="flex items-start gap-3 px-4 py-3 bg-amber-50 border border-amber-200 rounded-lg"
+            className="flex items-start gap-3 px-4 py-3 bg-[var(--color-warning-light)] border border-[var(--color-warning)]/40 rounded-lg"
           >
-            <span className="text-amber-600 text-lg shrink-0" aria-hidden>⚠</span>
+            <span className="text-[var(--color-warning)] text-lg shrink-0" aria-hidden>⚠</span>
             <div>
-              <p className="font-medium text-amber-900 text-sm">Data mismatch — needs review</p>
-              <p className="text-amber-800 text-sm mt-0.5">{mismatchReason}</p>
+              <p className="font-medium text-[var(--hertz-black)] text-sm">Data mismatch — needs review</p>
+              <p className="text-[var(--neutral-700)] text-sm mt-0.5">{mismatchReason}</p>
             </div>
           </motion.div>
         )}
 
+        {/* Lead header */}
+        <div className="rounded-lg border border-[var(--neutral-200)] bg-[var(--hertz-white)] p-5">
+          <h2 className="text-2xl font-bold text-[#1A1A1A]">{lead.customer}</h2>
+          <p className="text-sm text-[#6E6E6E] font-mono mt-0.5">{lead.reservationId}</p>
+        </div>
+
         {hierarchy && (
-          <div className="flex items-center gap-2 text-xs text-[#6E6E6E] bg-gray-50 rounded px-3 py-2">
+          <div className="flex items-center gap-2 text-xs text-[var(--neutral-600)] bg-[var(--hertz-white)] rounded-lg border border-[var(--neutral-200)] px-3 py-2">
             <span><span className="font-medium text-[#1A1A1A]">BM</span> {hierarchy.bm}</span>
             <span className="text-[#E6E6E6]">→</span>
             <span><span className="font-medium text-[#1A1A1A]">AM</span> {hierarchy.am}</span>
@@ -47,7 +53,7 @@ export default function LeadDetail({ lead, enrichmentSlot, contactSlot, contactB
         )}
 
         {/* Lead Details */}
-        <div>
+        <div className="rounded-lg border border-[var(--neutral-200)] bg-[var(--hertz-white)] p-5">
           <h3 className="text-xs font-bold text-[#6E6E6E] uppercase tracking-wider mb-3">Lead Details</h3>
           <div className="grid grid-cols-2 gap-4 text-sm">
             <div>
@@ -77,8 +83,8 @@ export default function LeadDetail({ lead, enrichmentSlot, contactSlot, contactB
                 {lead.firstContactBy && lead.firstContactBy !== "none" && (
                   <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded ${
                     lead.firstContactBy === "branch"
-                      ? "bg-green-50 text-[#2E7D32] border border-green-200"
-                      : "bg-red-50 text-[#C62828] border border-red-200"
+                      ? "bg-[var(--color-success-light)] text-[var(--color-success)] border border-[var(--color-success)]/40"
+                      : "bg-[var(--color-error-light)] text-[var(--color-error)] border border-[var(--color-error)]/40"
                   }`}>
                     {lead.firstContactBy === "branch" ? "Branch" : "HRD"}
                   </span>
@@ -100,57 +106,94 @@ export default function LeadDetail({ lead, enrichmentSlot, contactSlot, contactB
             {lead.hlesReason && (
               <div className="col-span-2">
                 <p className="text-[#6E6E6E] text-xs uppercase">HLES Cancellation Reason</p>
-                <p className="font-medium text-[#C62828]">{lead.hlesReason}</p>
+                <p className="font-medium text-[var(--color-error)]">{lead.hlesReason}</p>
               </div>
             )}
-            {(lead.archived || lead.enrichmentComplete) && (
+            {lead.archived && (
               <div className="col-span-2 flex flex-wrap gap-2">
-                {lead.archived && (
-                  <span className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-[var(--neutral-100)] text-[var(--neutral-600)]">
-                    Archived
-                  </span>
-                )}
-                {lead.enrichmentComplete && (
-                  <span className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-green-50 text-[#2E7D32] border border-green-200">
-                    Enrichment complete
-                  </span>
-                )}
+                <span className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-[var(--neutral-100)] text-[var(--neutral-600)] border border-[var(--neutral-200)]">
+                  Archived
+                </span>
               </div>
             )}
           </div>
-        </div>
-
-        {/* Contact Details — contactSlot renders full section with pencil edit; fallback for walkthroughs */}
-        <div>
-          {contactSlot ?? (
-            <div>
-              <h3 className="text-xs font-bold text-[#6E6E6E] uppercase tracking-wider mb-3">Contact Details</h3>
-              <div className="grid grid-cols-2 gap-4 text-sm">
+          {/* Contact Details — same cluster as Lead Details */}
+          {(contactSlot ?? true) && (
+            <div className="mt-4 pt-4 border-t border-[var(--neutral-200)]">
+              {contactSlot ?? (
                 <div>
-                  <p className="text-[#6E6E6E] text-xs uppercase">Email</p>
-                  <p className="font-medium truncate" title={lead.email ?? undefined}>{lead.email ?? "—"}</p>
+                  <h3 className="text-xs font-bold text-[#6E6E6E] uppercase tracking-wider mb-3">Contact Details</h3>
+                  <div className="grid grid-cols-2 gap-4 text-sm">
+                    <div>
+                      <p className="text-[#6E6E6E] text-xs uppercase">Email</p>
+                      <p className="font-medium truncate" title={lead.email ?? undefined}>{lead.email ?? "—"}</p>
+                    </div>
+                    <div>
+                      <p className="text-[#6E6E6E] text-xs uppercase">Phone</p>
+                      <p className="font-medium">{lead.phone ?? "—"}</p>
+                    </div>
+                  </div>
                 </div>
-                <div>
-                  <p className="text-[#6E6E6E] text-xs uppercase">Phone</p>
-                  <p className="font-medium">{lead.phone ?? "—"}</p>
-                </div>
-              </div>
+              )}
             </div>
           )}
         </div>
 
-        <TranslogTimeline events={lead.translog} enrichmentLog={lead.enrichmentLog} contactActivities={contactActivities} />
+        {/* TRANSLOG Activity — collapsible */}
+        <div className="rounded-lg border border-[var(--neutral-200)] bg-[var(--hertz-white)] overflow-hidden">
+          <button
+            type="button"
+            onClick={() => setTranslogExpanded((v) => !v)}
+            className="w-full flex items-center justify-between gap-3 px-5 py-3 text-left hover:bg-[var(--neutral-50)] transition-colors cursor-pointer"
+            aria-expanded={translogExpanded}
+          >
+            <span className="text-xs font-bold text-[#6E6E6E] uppercase tracking-wider">TRANSLOG Activity</span>
+            <span className="flex items-center gap-2 text-xs text-[var(--neutral-600)]">
+              {hasActivity && <span className="font-medium">{activityCount} event{activityCount !== 1 ? "s" : ""}</span>}
+              <svg
+                className={`w-4 h-4 text-[var(--neutral-500)] transition-transform ${translogExpanded ? "rotate-180" : ""}`}
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+              </svg>
+            </span>
+          </button>
+          <AnimatePresence>
+            {translogExpanded && (
+              <motion.div
+                initial={{ height: 0, opacity: 0 }}
+                animate={{ height: "auto", opacity: 1 }}
+                exit={{ height: 0, opacity: 0 }}
+                transition={{ duration: 0.2 }}
+                className="overflow-hidden"
+              >
+                <div className="px-5 pb-5 pt-1 border-t border-[var(--neutral-200)]">
+                  <TranslogTimeline events={lead.translog} enrichmentLog={lead.enrichmentLog} contactActivities={contactActivities} showHeader={false} />
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
       </div>
 
-      <div className="border-l border-[var(--neutral-200)] pl-8 space-y-8">
+      {/* Right column — visual clusters for Contact, Tasks, Comments */}
+      <div className="border-l border-[var(--neutral-200)] pl-8 space-y-6">
         {contactButtonsSlot && (
-          <div>
+          <div className="rounded-lg border border-[var(--neutral-200)] bg-[var(--hertz-white)] p-5">
             <h3 className="text-xs font-bold text-[#6E6E6E] uppercase tracking-wider mb-3">Contact Customer</h3>
             {contactButtonsSlot}
           </div>
         )}
-        {tasksSlot && <div>{tasksSlot}</div>}
-        <div>{enrichmentSlot}</div>
+        {tasksSlot && (
+          <div className="rounded-lg border border-[var(--neutral-200)] bg-[var(--hertz-white)] p-5">
+            {tasksSlot}
+          </div>
+        )}
+        <div className="rounded-lg border border-[var(--neutral-200)] bg-[var(--hertz-white)] p-5">
+          {enrichmentSlot}
+        </div>
       </div>
     </motion.div>
   );

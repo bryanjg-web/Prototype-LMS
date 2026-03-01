@@ -164,8 +164,6 @@ export default function ContactButtons({ lead, agentPhone, userProfile, onContac
     }
   };
 
-  const needsEnrichment = !hasEmail || !hasPhone;
-
   return (
     <div>
       {showCompose && (
@@ -174,20 +172,6 @@ export default function ContactButtons({ lead, agentPhone, userProfile, onContac
           onSend={handleEmailSend}
           onCancel={() => setShowCompose(false)}
         />
-      )}
-      {needsEnrichment && (
-        <div className="mb-4 p-3 rounded-lg bg-[var(--color-error-light)] border border-red-200">
-          <p className="text-sm font-medium text-[var(--color-error)]">
-            Add email and phone above, then save — required before you can send.
-          </p>
-          <p className="text-xs text-[var(--color-error)] mt-1">
-            {!hasEmail && !hasPhone
-              ? "Email and phone are blank. Fill them in above and click Save."
-              : !hasEmail
-                ? "Email is blank. Add it above and click Save to enable Email."
-                : "Phone is blank. Add it above and click Save to enable SMS and Call."}
-          </p>
-        </div>
       )}
       <div className="flex flex-wrap items-center gap-2">
         <button

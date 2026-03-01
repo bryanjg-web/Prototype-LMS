@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import DemoTopBar from "./DemoTopBar";
 import Sidebar from "./Sidebar";
 import OnboardingTour from "../OnboardingTour";
+import DataBanner from "./DataBanner";
 import { useAuth } from "../../context/AuthContext";
 import { useApp } from "../../context/AppContext";
 
@@ -11,6 +12,22 @@ export default function AppLayout({ children }) {
   const [onboardingOpen, setOnboardingOpen] = useState(false);
   const [onboardingReplay, setOnboardingReplay] = useState(false);
   const hasCheckedFirstLogin = useRef(false);
+  const mainRef = useRef(null);
+
+  // Scroll to top on page load/refresh (prevents browser scroll restoration)
+  useEffect(() => {
+    if (typeof history !== "undefined" && "scrollRestoration" in history) {
+      history.scrollRestoration = "manual";
+    }
+    const scrollToTop = () => {
+      window.scrollTo(0, 0);
+      mainRef.current?.scrollTo(0, 0);
+      document.getElementById("dashboard-scroll-root")?.scrollTo(0, 0);
+    };
+    scrollToTop();
+    const t = setTimeout(scrollToTop, 100);
+    return () => clearTimeout(t);
+  }, []);
 
   // Conditional launch: BM first login when onboarding_completed_at is null
   useEffect(() => {
@@ -39,9 +56,10 @@ export default function AppLayout({ children }) {
   return (
     <div className="h-full flex flex-col">
       <DemoTopBar onHelpClick={role === "bm" ? handleHelpClick : undefined} />
+      <DataBanner />
       <div className="flex-1 flex overflow-hidden">
         <Sidebar />
-        <main className="flex-1 overflow-auto bg-white">
+        <main ref={mainRef} className="flex-1 min-h-0 overflow-y-auto overscroll-none bg-white">
           {children}
         </main>
       </div>

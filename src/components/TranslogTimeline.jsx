@@ -24,7 +24,7 @@ function formatValue(v) {
   return v && String(v).trim() ? v : "—";
 }
 
-export default function TranslogTimeline({ events = [], enrichmentLog = [], contactActivities = [], animate = true }) {
+export default function TranslogTimeline({ events = [], enrichmentLog = [], contactActivities = [], animate = true, showHeader = true }) {
   const [expandedKey, setExpandedKey] = useState(null);
 
   // Merge translog (HLES), enrichment_log (user edits), and contact activities (email/SMS/call), sort by time
@@ -47,9 +47,11 @@ export default function TranslogTimeline({ events = [], enrichmentLog = [], cont
 
   return (
     <div className="space-y-3">
-      <h3 className="text-xs font-semibold text-[var(--neutral-600)] uppercase tracking-wide mb-2">
-        TRANSLOG Activity
-      </h3>
+      {showHeader && (
+        <h3 className="text-xs font-semibold text-[var(--neutral-600)] uppercase tracking-wide mb-2">
+          TRANSLOG Activity
+        </h3>
+      )}
       {merged.length === 0 ? (
         <p className="text-sm text-[var(--color-error)] italic">No activity recorded</p>
       ) : (
@@ -93,13 +95,10 @@ export default function TranslogTimeline({ events = [], enrichmentLog = [], cont
                     <p className="text-sm font-medium text-[var(--hertz-black)]">{ev.action}</p>
                     <p className="text-xs text-[var(--neutral-600)]">By {ev.author} · {ev.time}</p>
                     {hasEmailDetails && (
-                      <span className="inline-block mt-1.5 text-[9px] text-blue-700 px-1.5 py-0.5 rounded bg-blue-50 border border-blue-100">
+                      <span className="inline-block mt-1.5 text-[9px] text-[var(--neutral-600)] px-1.5 py-0.5 rounded bg-[var(--neutral-100)] border border-[var(--neutral-200)]">
                         {isExpanded ? "▼" : "▶"} Click to {isExpanded ? "collapse" : "view email"}
                       </span>
                     )}
-                    <span className="inline-block mt-1 text-[10px] font-medium px-1.5 py-0.5 rounded bg-amber-50 text-amber-800 border border-amber-200">
-                      Contact
-                    </span>
                   </button>
                   {hasEmailDetails && isExpanded && (
                     <motion.div
@@ -136,7 +135,7 @@ export default function TranslogTimeline({ events = [], enrichmentLog = [], cont
                           Enrichment
                         </span>
                         {hasEnrichmentDetails && (
-                          <span className="inline-block w-fit text-[9px] text-blue-700 px-1.5 py-0.5 rounded bg-blue-50 border border-blue-100">
+                          <span className="inline-block w-fit text-[9px] text-[var(--neutral-600)] px-1.5 py-0.5 rounded bg-[var(--neutral-100)] border border-[var(--neutral-200)]">
                             {isExpanded ? "▼" : "▶"} Click to {isExpanded ? "collapse" : "view changes"}
                           </span>
                         )}

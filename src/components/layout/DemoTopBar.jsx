@@ -45,7 +45,7 @@ const createMenuItems = [
 ];
 
 export default function DemoTopBar({ onHelpClick }) {
-  const { role, navigateTo, selectLead } = useApp();
+  const { role, navigateTo, selectLead, selectTask } = useApp();
   const { leads } = useData();
   const [inboxOpen, setInboxOpen] = useState(false);
   const [createMenuOpen, setCreateMenuOpen] = useState(false);
@@ -101,7 +101,20 @@ export default function DemoTopBar({ onHelpClick }) {
   return (
     <div className="h-[52px] bg-[#1A1A1A] flex items-center px-6 shrink-0 relative z-50">
       <div className="flex items-center gap-3">
-        <img src="/Hertz-Line_White_2020.png" alt="Hertz" className="h-7" />
+        <button
+          onClick={() => {
+            if (role) {
+              navigateTo(`${role}-dashboard`);
+              selectLead(null);
+              selectTask(null);
+            }
+          }}
+          className="flex items-center hover:opacity-90 transition-opacity cursor-pointer"
+          title="Back to dashboard"
+          aria-label="Back to dashboard"
+        >
+          <img src="/Hertz-Line_White_2020.png" alt="Hertz" className="h-7" />
+        </button>
         <span className="text-white/40 text-xs">|</span>
         <span className="text-white/70 text-sm">LEO: Your Lead Management System</span>
       </div>

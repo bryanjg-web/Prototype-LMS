@@ -1,0 +1,55 @@
+---
+description: UI conventions, component patterns, and styling standards from BM build
+alwaysApply: true
+---
+
+# UI & Component Conventions
+
+## Brand Palette (Hertz)
+
+- Primary gold: `#FFD100` / `var(--hertz-primary)`
+- Black: `#272425` / `var(--hertz-black)`
+- Text: `#1A1A1A`
+- Gray: `#666666`
+- Background: `#FFFFFF`
+- Subtle gold: `var(--hertz-primary-subtle)` for highlights
+
+## Table Styling Standard
+
+All data tables follow this pattern:
+- Header: `bg-[var(--hertz-black)]` with `text-white` column headers
+- Rows: `hover:bg-[var(--neutral-50)]`, `border-b border-[var(--neutral-100)]` separators
+- Limit to **5 rows** by default with a "View All" button (full-width, gray background)
+- "View All" buttons span the table width, not as inline links
+
+## Metric Tiles
+
+- Background: `bg-[var(--hertz-black)]` (black tiles)
+- Text: white for values, muted for labels
+- Titles: **bold**
+
+## Charts
+
+- Y-axis: `Y_TICKS = [0, 25, 50, 75, 100]` assumes percentages. For count metrics, dynamically compute ticks.
+- Empty state: Check `data.series.every(s => s.values.every(v => v == null))` — `weekLabels.length === 0` is never true because weeks are always generated.
+- Null vs 0: `null` means "no data" (skip in chart), `0` means "measured zero." Don't conflate them.
+- Separate time filters per chart section (Summary uses `selectedPresetKey`, trends uses `trendsTimePresetKey`).
+
+## Phone Number Formatting
+
+Only apply locale-specific formatting when the country code matches:
+- `+1` → US format `(XXX) XXX-XXXX`
+- All others → display raw digits
+- Show country flag emoji from `flagForCode()` helper
+
+## Slot Composition Pattern
+
+`LeadDetail` accepts an `enrichmentSlot` prop for pluggable forms. Use the same pattern for GM views that need customizable sub-sections (e.g., directive forms, review panels).
+
+## Context Destructuring Safety
+
+When using `useApp()` or `useData()`, always verify that every destructured value is actually passed to children. The `selectTask is not defined` crash came from destructuring `selectLead` but forgetting `selectTask`. In JSX without TypeScript, this is a silent `undefined` that only crashes at runtime.
+
+## Provider Order
+
+Auth and App providers must be at the root (`main.jsx`), not nested inside conditionally-rendered components. Current hierarchy: `AppProvider → AuthProvider → App (DataProvider → AppRoot)`.

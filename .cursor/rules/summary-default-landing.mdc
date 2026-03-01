@@ -1,0 +1,22 @@
+---
+description: Summary page must always be the default landing page for users
+alwaysApply: true
+---
+
+# Summary as Default Landing Page
+
+**Rule:** Users must always land on the **Summary** page first, never Meeting Prep or any other view.
+
+## Implementation
+
+- **`src/config/navigation.js`**: `roleDefaults.bm` must be `"bm-dashboard"` (Summary). Do not change to `"bm-meeting-prep"` or any other view.
+- **`src/components/interactive/InteractiveDashboard.jsx`**: 
+  - The Summary (dashboard) section must be the **first** section in the BM page layout (top of scroll).
+  - `firstViewId` / initial scroll highlight must use `roleDefaults[role]` (or `"bm-dashboard"` for BM), never hardcode `"bm-meeting-prep"`.
+- **`src/context/AppContext.jsx`**: Uses `roleDefaults` for initial view—keep as-is.
+
+## Do Not
+
+- Set Meeting Prep as the default landing view.
+- Put Meeting Prep above Summary in the BM dashboard scroll order.
+- Hardcode `"bm-meeting-prep"` as the initial/first view.

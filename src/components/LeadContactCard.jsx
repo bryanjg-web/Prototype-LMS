@@ -81,7 +81,6 @@ export default function LeadContactCard({ lead }) {
   const hasChanges = email !== (lead?.email ?? "") || phone !== (lead?.phone ?? "");
   const isEmailBlank = !email?.trim();
   const isPhoneBlank = !phone?.trim();
-  const needsEnrichment = isEmailBlank || isPhoneBlank;
   const parsedPhone = parsePhoneE164(lead?.phone ?? "");
 
   return (
@@ -103,20 +102,10 @@ export default function LeadContactCard({ lead }) {
 
       {isEditing ? (
         <>
-          {needsEnrichment && (
-            <div className="mb-3 p-3 rounded-lg bg-[var(--color-warning-light)] border border-[var(--color-warning)]/30">
-              <p className="text-sm font-medium text-[var(--hertz-black)]">
-                Add email and phone here to enable Email, SMS, and Call.
-              </p>
-              <p className="text-xs text-[var(--neutral-600)] mt-1">
-                Required before you can contact this lead. Click Save when done.
-              </p>
-            </div>
-          )}
           <div className="space-y-3">
             <div>
               <label className="text-xs text-[var(--neutral-600)] block mb-1">
-                Email {isEmailBlank && <span className="text-[var(--color-warning)]">— add to enable Email</span>}
+                Email
               </label>
               <input
                 type="email"
@@ -124,19 +113,21 @@ export default function LeadContactCard({ lead }) {
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="customer@example.com"
                 className={`w-full border rounded px-3 py-2 text-sm bg-white focus:border-[var(--hertz-primary)] focus:outline-none ${
-                  isEmailBlank ? "border-[var(--color-warning)]/50" : "border-[var(--neutral-200)]"
+                  isEmailBlank
+                    ? "border-[var(--hertz-primary)] animate-hertz-pulse"
+                    : "border-[var(--neutral-200)]"
                 }`}
               />
             </div>
             <div>
               <label className="text-xs text-[var(--neutral-600)] block mb-1">
-                Phone {isPhoneBlank && <span className="text-[var(--color-warning)]">— add to enable SMS & Call</span>}
+                Phone
               </label>
               <PhoneInput
                 value={phone}
                 onChange={setPhone}
                 showHint={true}
-                showWarning={isPhoneBlank}
+                showIncomplete={isPhoneBlank}
               />
             </div>
             <div className="flex items-center gap-2">

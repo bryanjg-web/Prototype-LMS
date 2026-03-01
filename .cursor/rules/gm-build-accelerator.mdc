@@ -1,0 +1,53 @@
+---
+description: Comprehensive guide for building the GM view, synthesized from BM build learnings
+alwaysApply: true
+---
+
+# GM Build Accelerator
+
+## GM Views (from navigation.js)
+
+Existing GM nav: `gm-dashboard`, `gm-compliance`, `gm-cancelled-leads`, `gm-unused-leads`, `gm-lead-review`, `gm-spot-check`. Drill-downs: `gm-review-detail`.
+
+## Step-by-Step Build Sequence
+
+### 1. Lock Architecture First
+Before writing any component code, decide and document:
+- Which views share a scroll page (`GM_MAIN_VIEWS`)
+- Which views are separate pages
+- The `GM_SECTION_MAP` key order (must match DOM order)
+- The `roleDefaults.gm` value (protect with cursor rule if needed)
+
+### 2. Wire Navigation Before Content
+Get `InteractiveShell.jsx` → `InteractiveDashboard.jsx` → `Sidebar.jsx` working with placeholder sections before building real content. Test scroll highlight with placeholder divs.
+
+### 3. Build Selectors Before Components
+Add GM selectors to `demoSelectors.js` first: `getGMStats`, `getBMLeaderboardData`, `getCancelledLeads`, `getUnusedLeads`, `getMismatchLeads`. These already partially exist — verify and extend.
+
+### 4. Reuse BM Component Patterns
+- `LeadQueue` / `LeadDetail` with `enrichmentSlot` — same components, different data
+- `MetricDrilldownModal` — reuse for GM metric deep-dives
+- `StatusBadge`, `TranslogTimeline` — shared components
+- `ConversionBreakdownTable` + `GroupBySelector` — already built for zone-level breakdown
+
+## Top 10 Mistakes to Avoid
+
+1. **Don't flip page architecture mid-build** — merging/splitting scrollable pages caused 3+ rewrites in BM
+2. **Don't hardcode `firstViewId`** — always derive from `roleDefaults[role]`
+3. **Don't forget bottom-of-page scroll detection** — short final sections never trigger IntersectionObserver
+4. **Don't leave Supabase errors unchecked** — always destructure `{ error }` from every operation
+5. **Don't use overwrite columns for accumulating data** — use JSONB arrays from the start
+6. **Don't default filters to restrictive values** — start with "All" to avoid empty states
+7. **Don't edit old seed migrations for existing DBs** — create new migrations for data fixes
+8. **Don't forget to update both mockData.js AND supabaseData.js** — dual source must stay in sync
+9. **Don't apply locale-specific formatting globally** — gate by country/locale
+10. **Don't pass undeclared variables as props** — verify every context destructure matches usage
+
+## GM-Specific Considerations
+
+- GM views aggregate across **multiple branches** (zone-level) — selectors need `orgMapping` to group branches by zone
+- GM "Compliance Meeting" view is the hero feature (per HANDOFF-BRIEF) — prioritize it
+- GM tasks are **assigned to BMs**, not self-managed — different task flow than BM
+- "Spot Check" selects random leads for review — needs a randomization selector
+- Leaderboard shows BM-to-BM comparison within a zone — reuse `getBMLeaderboardData`
+- Weekly cadence: Monday upload → Tue-Wed BM enrichment → Thursday GM meeting → Friday follow-up

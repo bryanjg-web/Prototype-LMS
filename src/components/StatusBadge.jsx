@@ -1,8 +1,13 @@
+/** Semantic colors: each maps to a clear action/state
+ *  Success (green) = completed, rented
+ *  Error (red) = cancelled, needs attention
+ *  Warning (amber) = unused, action required
+ *  Neutral (grey) = reviewed, informational */
 const statusStyles = {
-  Cancelled: "bg-red-50 text-[#C62828] border border-red-200",
-  Unused: "bg-amber-50 text-[#1A1A1A] border border-amber-200",
-  Rented: "bg-green-50 text-[#2E7D32] border border-green-200",
-  Reviewed: "bg-gray-50 text-[#6E6E6E] border border-gray-200",
+  Cancelled: "bg-[var(--color-error-light)] text-[var(--color-error)] border border-[var(--color-error)]/40",
+  Unused: "bg-[var(--color-warning-light)] text-[var(--color-warning)] border border-[var(--color-warning)]/40",
+  Rented: "bg-[var(--color-success-light)] text-[var(--color-success)] border border-[var(--color-success)]/40",
+  Reviewed: "bg-[var(--neutral-100)] text-[var(--neutral-600)] border border-[var(--neutral-200)]",
 };
 
 export default function StatusBadge({ status }) {
