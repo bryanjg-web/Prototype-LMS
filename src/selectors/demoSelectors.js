@@ -538,12 +538,13 @@ export function getLeadsForZoneInRange(leads, dateRange, zone) {
   return filtered;
 }
 
-const GROUP_ATTRS = ["status", "insurance_company", "body_shop"];
+const GROUP_ATTRS = ["status", "insurance_company", "body_shop", "branch"];
 
 function getLeadGroupKey(lead, attr) {
   if (attr === "status") return lead.status || "—";
   if (attr === "insurance_company") return lead.insuranceCompany ?? lead.insurance_company ?? "—";
   if (attr === "body_shop") return lead.bodyShop ?? lead.body_shop ?? "—";
+  if (attr === "branch") return lead.branch ?? "—";
   return "—";
 }
 
@@ -1408,4 +1409,67 @@ export function getGMLeads(leads, dateRange = null, filters = {}) {
   }
 
   return [...filtered].sort((a, b) => getLeadPriority(a) - getLeadPriority(b));
+}
+
+/** GM meeting prep data: per-branch compliance checklist + zone-level outstanding items. */
+export function getGMMeetingPrepData(leads, dateRange = null, gmName = "D. Williams") {
+  const myBranches = orgMapping.filter((r) => r.gm === gmName).map((r) => r.branch);
+
+  const branchChecklist = myBranches.map((branch) => {
+    const branchLeads = getLeadsForBranchInRange(leads ?? [], dateRange, branch);
+    const total = branchLeads.length;
+
+    const cancelledUnreviewed = branchLeads.filter((l) => l.status === "Cancelled" && !l.archived && !l.gmDirective).length;
+    const unusedOverdue = branchLeads.filter((l) => l.status === "Unused" && (l.daysOpen ?? 0) > 5).length;
+
+    const actionable = branchLeads.filter((l) => l.status === "Cancelled" || l.status === "Unused");
+    const withComments = actionable.filter((l) => l.enrichment?.reason || l.enrichment?.notes);
+    const missingComments = actionable.length - withComments.length;
+
+    const mismatchLeads = branchLeads.filter((l) => l.mismatch);
+
+    const outstanding = cancelledUnreviewed + unusedOverdue + missingComments + mismatchLeads.length;
+    const row = orgMapping.find((r) => r.branch === branch);
+
+    return {
+      branch,
+      bmName: row?.bm ?? "—",
+      total,
+      cancelledUnreviewed,
+      unusedOverdue,
+      missingComments,
+      mismatchCount: mismatchLeads.length,
+      outstanding,
+      isComplete: outstanding === 0,
+    };
+  });
+
+  branchChecklist.sort((a, b) => b.outstanding - a.outstanding);
+
+  const totalOutstanding = branchChecklist.reduce((s, b) => s + b.outstanding, 0);
+  const branchesComplete = branchChecklist.filter((b) => b.isComplete).length;
+
+  return {
+    branchChecklist,
+    totalOutstanding,
+    branchesComplete,
+    totalBranches: myBranches.length,
+  };
+}
+
+/** Count of outstanding GM items across all branches — for module badge. */
+export function getGMOutstandingCount(leads, dateRange = null, gmName = "D. Williams") {
+  const data = getGMMeetingPrepData(leads, dateRange, gmName);
+  return data.totalOutstanding;
+}
+
+/** Count of leads pending GM review (cancelled unreviewed + unused overdue). */
+export function getGMLeadsToReviewCount(leads, dateRange = null) {
+  let filtered = leads ?? [];
+  if (dateRange?.start || dateRange?.end) {
+    filtered = filtered.filter((l) => leadInDateRange(l, dateRange.start, dateRange.end));
+  }
+  const cancelled = filtered.filter((l) => l.status === "Cancelled" && !l.archived && !l.gmDirective).length;
+  const unusedOverdue = filtered.filter((l) => l.status === "Unused" && (l.daysOpen ?? 0) > 5).length;
+  return cancelled + unusedOverdue;
 }

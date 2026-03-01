@@ -20,6 +20,8 @@ import {
   getAverageTimeToContact,
   getAverageTimeToContactMinutes,
   tasksInDateRange,
+  getGMDashboardStats,
+  getGMMetricTrendByWeek,
 } from "../../selectors/demoSelectors";
 import { roleMeta, roleUsers, roleDefaults } from "../../config/navigation";
 import MiniBarChart from "../MiniBarChart";
@@ -29,6 +31,9 @@ import InteractiveComplianceDashboard from "./InteractiveComplianceDashboard";
 import InteractiveGMDashboard from "./InteractiveGMDashboard";
 import MeetingPrepModule from "../MeetingPrepModule";
 import LeaderboardModule from "../LeaderboardModule";
+import GMLeaderboardModule from "../GMLeaderboardModule";
+import GMMeetingPrepModule from "../GMMeetingPrepModule";
+import GMLeadReviewModule from "../GMLeadReviewModule";
 import { DateRangeCalendar } from "../DateRangeCalendar";
 import MetricDrilldownModal from "../MetricDrilldownModal";
 import SummaryExportModal from "../SummaryExportModal";
@@ -2015,8 +2020,10 @@ const BM_SECTION_MAP = {
 };
 
 const GM_SECTION_MAP = {
-  "gm-dashboard": "dashboard",
-  "gm-compliance": "compliance",
+  "gm-overview": "business-metrics",
+  "gm-business-metrics": "business-metrics",
+  "gm-team-performance": "team-performance",
+  "gm-todos": "todos",
 };
 
 // Reverse: sectionId -> viewId for scroll-based highlight

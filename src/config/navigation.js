@@ -1,6 +1,6 @@
 export const roleDefaults = {
   bm: "bm-dashboard",
-  gm: "gm-dashboard",
+  gm: "gm-overview",
   admin: "admin-dashboard",
 };
 
@@ -15,10 +15,12 @@ export const roleNav = {
     { id: "bm-todo", label: "Open Tasks", icon: "check-circle", sectionId: "open-tasks", parentId: "bm-dashboard" },
   ],
   gm: [
-    { id: "gm-dashboard", label: "Overview", icon: "grid", sectionId: "dashboard" },
-    { id: "gm-compliance", label: "Compliance", icon: "bar-chart", sectionId: "compliance" },
-    { id: "gm-leads", label: "Leads", icon: "list" },
-    { id: "gm-leaderboard", label: "Leaderboard", icon: "trophy" },
+    { id: "gm-overview", label: "Overview", icon: "grid" },
+    { id: "gm-business-metrics", label: "Business Metrics", icon: "bar-chart", sectionId: "business-metrics", parentId: "gm-overview" },
+    { id: "gm-team-performance", label: "Team Performance", icon: "users", sectionId: "team-performance", parentId: "gm-overview" },
+    { id: "gm-todos", label: "To Dos", icon: "check-circle", sectionId: "todos" },
+    { id: "gm-meeting-prep", label: "Meeting Prep", icon: "columns", parentId: "gm-todos" },
+    { id: "gm-lead-review", label: "Lead Review", icon: "search", parentId: "gm-todos" },
   ],
   admin: [
     { id: "admin-dashboard", label: "Dashboard", icon: "grid" },

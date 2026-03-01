@@ -13,6 +13,7 @@ import InteractiveMeetingPrepPage from "./InteractiveMeetingPrepPage";
 import InteractiveLeaderboardPage from "./InteractiveLeaderboardPage";
 import InteractiveGMLeadsPage from "./InteractiveGMLeadsPage";
 import InteractiveGMLeaderboardPage from "./InteractiveGMLeaderboardPage";
+import InteractiveGMMeetingPrepPage from "./InteractiveGMMeetingPrepPage";
 
 const viewComponents = {
   "bm-home": InteractiveDashboard,
@@ -23,9 +24,12 @@ const viewComponents = {
   "bm-task-detail": InteractiveTaskDetail,
   "bm-meeting-prep": InteractiveMeetingPrepPage,
   "bm-leaderboard": InteractiveLeaderboardPage,
-  "gm-dashboard": InteractiveDashboard,
-  "gm-compliance": InteractiveDashboard,
-  "gm-leads": InteractiveGMLeadsPage,
+  "gm-overview": InteractiveDashboard,
+  "gm-business-metrics": InteractiveDashboard,
+  "gm-team-performance": InteractiveDashboard,
+  "gm-todos": InteractiveDashboard,
+  "gm-meeting-prep": InteractiveGMMeetingPrepPage,
+  "gm-lead-review": InteractiveGMLeadsPage,
   "gm-leaderboard": InteractiveGMLeaderboardPage,
   "admin-dashboard": InteractiveDashboard,
   "admin-uploads": InteractiveUploads,
@@ -37,7 +41,7 @@ const viewComponents = {
 // Views that share the same scrollable page - use stable key to avoid remount/refresh
 // Meeting Prep and Leaderboard are separate pages; Summary (dashboard) has Home, Work, My Leads + Open Tasks
 const BM_MAIN_VIEWS = ["bm-home", "bm-dashboard", "bm-leads", "bm-todo"];
-const GM_MAIN_VIEWS = ["gm-dashboard", "gm-compliance"];
+const GM_MAIN_VIEWS = ["gm-overview", "gm-business-metrics", "gm-team-performance", "gm-todos"];
 
 function getShellKey(activeView) {
   if (BM_MAIN_VIEWS.includes(activeView)) return "bm-main";
