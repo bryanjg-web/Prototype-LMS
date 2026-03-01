@@ -6,9 +6,12 @@ import { useData } from "../../context/DataContext";
 import { roleNav, roleMeta, roleUsers, drillDownViews } from "../../config/navigation";
 import {
   getDateRangePresets,
-  getLeadsForBranchInRange,
   getMeetingPrepOutstandingCount,
   getDefaultBranchForDemo,
+  getGMOutstandingCount,
+  getTasksForGMBranches,
+  getGMLeadsToReviewCount,
+  getMismatchLeads,
 } from "../../selectors/demoSelectors";
 
 const iconMap = {
@@ -86,7 +89,7 @@ const iconMap = {
 
 const SECTION_VIEW_IDS = {
   bm: ["bm-home", "bm-dashboard", "bm-leads", "bm-todo", "bm-work", "bm-meeting-prep", "bm-leaderboard"],
-  gm: ["gm-dashboard", "gm-compliance", "gm-leads", "gm-leaderboard"],
+  gm: ["gm-todos", "gm-meeting-prep", "gm-lead-review", "gm-overview", "gm-business-metrics", "gm-team-performance", "gm-leaderboard"],
 };
 
 /** Derives initials from display name (e.g. "Sarah Chen" → "SC"). */
@@ -118,29 +121,67 @@ export default function Sidebar() {
     return getMeetingPrepOutstandingCount(leads ?? [], dateRange, branch);
   }, [role, leads, userProfile?.branch]);
 
+  // GM Meeting Prep: outstanding branch items + open tasks to chase
+  const gmMeetingPrepOutstanding = useMemo(() => {
+    if (role !== "gm") return 0;
+    const presets = getDateRangePresets();
+    const thisWeek = presets.find((p) => p.key === "this_week");
+    if (!thisWeek) return 0;
+    const dateRange = { start: thisWeek.start, end: thisWeek.end };
+    const outstanding = getGMOutstandingCount(leads ?? [], dateRange);
+    const openTasks = getTasksForGMBranches(null, "D. Williams");
+    return outstanding + openTasks.length;
+  }, [role, leads]);
+
+  // GM Lead Review: leads needing GM review (cancelled unreviewed, unused overdue, mismatches)
+  const gmLeadReviewOutstanding = useMemo(() => {
+    if (role !== "gm") return 0;
+    const presets = getDateRangePresets();
+    const thisWeek = presets.find((p) => p.key === "this_week");
+    if (!thisWeek) return 0;
+    const dateRange = { start: thisWeek.start, end: thisWeek.end };
+    const toReview = getGMLeadsToReviewCount(leads ?? [], dateRange);
+    const mismatches = getMismatchLeads(leads ?? []).length;
+    return toReview + mismatches;
+  }, [role, leads]);
+
+  const BM_SCROLL_VIEWS = ["bm-home", "bm-dashboard", "bm-leads", "bm-todo"];
+  const GM_SCROLL_VIEWS = ["gm-overview", "gm-business-metrics", "gm-team-performance", "gm-todos"];
+  const isOnScrollPage = BM_SCROLL_VIEWS.includes(activeView) || GM_SCROLL_VIEWS.includes(activeView);
   const isSectionView = role && SECTION_VIEW_IDS[role]?.includes(activeView);
-  const resolvedActive = isSectionView && scrollActiveView
+  const resolvedActive = isOnScrollPage && scrollActiveView
     ? scrollActiveView
     : drillDownViews.includes(activeView)
       ? activeView === "bm-task-detail"
         ? "bm-todo"
         : activeView === "gm-lead-detail"
-          ? "gm-leads"
+          ? "gm-lead-review"
           : activeView.replace(/-detail$/, "").replace("bm-lead", "bm-leads")
       : activeView;
 
-  // Work sub-sections (Meeting Prep, Leaderboard)
+  // BM: Work sub-sections (Meeting Prep, Leaderboard)
   const workChildIds = ["bm-meeting-prep", "bm-leaderboard"];
   const summaryChildIds = ["bm-leads", "bm-todo"];
   const hasWorkChildren = role === "bm" && workChildIds.some((id) => navItems.some((n) => n.id === id));
   const hasSummaryChildren = role === "bm" && summaryChildIds.some((id) => navItems.some((n) => n.id === id));
   const inWorkSection = resolvedActive === "bm-work" || workChildIds.includes(resolvedActive);
   const inSummarySection = resolvedActive === "bm-dashboard" || summaryChildIds.includes(resolvedActive);
-  // Keep open when scrolling down past section; only close when scrolling back up
   const workExpanded =
     inWorkSection || (inSummarySection && scrollDirection === "down");
   const summaryExpanded =
     inSummarySection || (inWorkSection && scrollDirection === "down");
+
+  // GM: Work sub-sections (Meeting Prep, Lead Review); Summary sub-sections (Business Metrics, Team Performance)
+  const gmTodosChildIds = ["gm-meeting-prep", "gm-lead-review"];
+  const gmOverviewChildIds = ["gm-business-metrics", "gm-team-performance"];
+  const hasGmOverviewChildren = role === "gm" && gmOverviewChildIds.some((id) => navItems.some((n) => n.id === id));
+  const hasGmTodosChildren = role === "gm" && gmTodosChildIds.some((id) => navItems.some((n) => n.id === id));
+  const inGmOverviewSection = resolvedActive === "gm-overview" || gmOverviewChildIds.includes(resolvedActive);
+  const inGmTodosSection = resolvedActive === "gm-todos" || gmTodosChildIds.includes(resolvedActive);
+  const gmTodosExpanded =
+    inGmTodosSection || (inGmOverviewSection && scrollDirection === "down");
+  const gmOverviewExpanded =
+    inGmOverviewSection || (inGmTodosSection && scrollDirection === "down");
 
   const navScrollRef = useRef(null);
   useEffect(() => {
@@ -153,7 +194,7 @@ export default function Sidebar() {
     <motion.div
       layout={!reduceMotion}
       initial={false}
-      animate={{ width: sidebarCollapsed ? 56 : 176 }}
+      animate={{ width: sidebarCollapsed ? 56 : 220 }}
       transition={{ duration: reduceMotion ? 0 : 0.25, ease: [0.4, 0, 0.2, 1] }}
       className="bg-[#F8F8F8] border-r border-[#E5E5E5] flex flex-col shrink-0 overflow-hidden"
     >
@@ -175,29 +216,77 @@ export default function Sidebar() {
       {/* Nav items — scrollable so Open Tasks is reachable when expanded */}
       <nav ref={navScrollRef} className="flex-1 min-h-0 overflow-y-auto px-2 space-y-0.5 min-w-0" data-onboarding="sidebar-nav">
         {navItems.map((item, i) => {
+          // BM parent/child visibility
           const isWorkChild = item.parentId === "bm-work";
           const isSummaryChild = item.parentId === "bm-dashboard";
           if (isWorkChild && !workExpanded) return null;
           if (isSummaryChild && !summaryExpanded) return null;
 
-          const isActive =
-            item.id === "bm-work"
-              ? (workChildIds.includes(resolvedActive) || resolvedActive === "bm-work")
-              : item.id === "bm-dashboard"
-                ? (summaryChildIds.includes(resolvedActive) || resolvedActive === "bm-dashboard")
-                : resolvedActive === item.id;
+          // GM parent/child visibility
+          const isGmOverviewChild = item.parentId === "gm-overview";
+          const isGmTodosChild = item.parentId === "gm-todos";
+          if (isGmOverviewChild && !gmOverviewExpanded) return null;
+          if (isGmTodosChild && !gmTodosExpanded) return null;
+
+          // Determine active state
+          let isActive;
+          if (item.id === "bm-work") {
+            isActive = workChildIds.includes(resolvedActive) || resolvedActive === "bm-work";
+          } else if (item.id === "bm-dashboard") {
+            isActive = summaryChildIds.includes(resolvedActive) || resolvedActive === "bm-dashboard";
+          } else if (item.id === "gm-overview") {
+            isActive = gmOverviewChildIds.includes(resolvedActive) || resolvedActive === "gm-overview";
+          } else if (item.id === "gm-todos") {
+            isActive = gmTodosChildIds.includes(resolvedActive) || resolvedActive === "gm-todos";
+          } else {
+            isActive = resolvedActive === item.id;
+          }
+
           const isChild = !!item.parentId;
 
           const showMeetingPrepBadge =
             item.id === "bm-meeting-prep" && meetingPrepOutstanding > 0;
-          const badgeTitle =
-            meetingPrepOutstanding === 1
-              ? "1 action needed before your meeting"
-              : `${meetingPrepOutstanding} actions needed before your meeting`;
+          const showGmMeetingPrepBadge =
+            item.id === "gm-meeting-prep" && gmMeetingPrepOutstanding > 0;
+          const showGmLeadReviewBadge =
+            item.id === "gm-lead-review" && gmLeadReviewOutstanding > 0;
 
+          const badgeCount =
+            showMeetingPrepBadge ? meetingPrepOutstanding
+            : showGmMeetingPrepBadge ? gmMeetingPrepOutstanding
+            : showGmLeadReviewBadge ? gmLeadReviewOutstanding
+            : 0;
+          const badgeTitle =
+            badgeCount === 1
+              ? showGmLeadReviewBadge
+                ? "1 lead needing review"
+                : "1 action needed before your meeting"
+              : showGmLeadReviewBadge
+                ? `${badgeCount} leads needing review`
+                : `${badgeCount} actions needed before your meeting`;
+
+          const showBadge = showMeetingPrepBadge || showGmMeetingPrepBadge || showGmLeadReviewBadge;
+
+          // Parent items with chevrons
           const isWorkParent = item.id === "bm-work" && hasWorkChildren;
           const isSummaryParent = item.id === "bm-dashboard" && hasSummaryChildren;
-          const navTarget = item.id === "bm-work" ? "bm-meeting-prep" : item.id;
+          const isGmOverviewParent = item.id === "gm-overview" && hasGmOverviewChildren;
+          const isGmTodosParent = item.id === "gm-todos" && hasGmTodosChildren;
+          const hasChevron = isWorkParent || isSummaryParent || isGmOverviewParent || isGmTodosParent;
+
+          // Chevron expanded state
+          const chevronExpanded = isWorkParent ? workExpanded
+            : isSummaryParent ? summaryExpanded
+            : isGmOverviewParent ? gmOverviewExpanded
+            : isGmTodosParent ? gmTodosExpanded
+            : false;
+
+          // Navigation target: parent items scroll to first child section
+          let navTarget = item.id;
+          if (item.id === "bm-work") navTarget = "bm-meeting-prep";
+          if (item.id === "gm-overview") navTarget = "gm-overview";
+          if (item.id === "gm-todos") navTarget = "gm-todos";
+
           return (
             <div key={item.id} data-nav-id={item.id} className="flex items-center min-w-0">
               <motion.button
@@ -213,48 +302,34 @@ export default function Sidebar() {
                     ? "bg-[#FFD100]/15 text-[#272425] font-semibold ring-1 ring-[#FFD100]/40"
                     : "text-[#666666] hover:bg-white/80 hover:text-[#272425]"
                 }`}
-                title={showMeetingPrepBadge ? badgeTitle : item.label}
+                title={showBadge ? badgeTitle : item.label}
               >
                 <span className={`relative shrink-0 ${isActive ? "text-[#FFD100]" : ""}`}>
                   {iconMap[item.icon]}
-                  {showMeetingPrepBadge && (
+                  {showBadge && (
                     <span
                       className="absolute -top-1.5 -right-1.5 min-w-[18px] h-[18px] px-1 flex items-center justify-center rounded-full bg-[var(--hertz-primary)] text-[var(--hertz-black)] text-[10px] font-bold shadow-[var(--shadow-sm)]"
                       aria-label={badgeTitle}
                     >
-                      {meetingPrepOutstanding > 99 ? "99+" : meetingPrepOutstanding}
+                      {badgeCount > 99 ? "99+" : badgeCount}
                     </span>
                   )}
                 </span>
                 {!sidebarCollapsed && (
                   <>
-                    <span className={`truncate ${(isWorkParent || isSummaryParent) ? "shrink-0" : ""}`}>{item.label}</span>
-                    {isWorkParent && (
-                      <span className="ml-auto shrink-0 pointer-events-none" title={workExpanded ? "Expanded (scroll to collapse)" : "Collapsed (scroll down to expand)"} aria-expanded={workExpanded}>
-                          <motion.svg
-                            className="w-4 h-4"
-                            fill="none"
-                            stroke="currentColor"
-                            viewBox="0 0 24 24"
-                            animate={{ rotate: workExpanded ? 90 : 0 }}
-                            transition={{ duration: 0.2 }}
-                          >
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                          </motion.svg>
-                      </span>
-                    )}
-                    {isSummaryParent && (
-                      <span className="ml-auto shrink-0 pointer-events-none" title={summaryExpanded ? "Expanded (scroll to collapse)" : "Collapsed (scroll down to expand)"} aria-expanded={summaryExpanded}>
-                          <motion.svg
-                            className="w-4 h-4"
-                            fill="none"
-                            stroke="currentColor"
-                            viewBox="0 0 24 24"
-                            animate={{ rotate: summaryExpanded ? 90 : 0 }}
-                            transition={{ duration: 0.2 }}
-                          >
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                          </motion.svg>
+                    <span className={`truncate ${hasChevron ? "shrink-0" : ""}`}>{item.label}</span>
+                    {hasChevron && (
+                      <span className="ml-auto shrink-0 pointer-events-none" aria-expanded={chevronExpanded}>
+                        <motion.svg
+                          className="w-4 h-4"
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                          animate={{ rotate: chevronExpanded ? 90 : 0 }}
+                          transition={{ duration: 0.2 }}
+                        >
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                        </motion.svg>
                       </span>
                     )}
                   </>

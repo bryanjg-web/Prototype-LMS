@@ -148,6 +148,27 @@ const METRIC_CONFIG = {
     numeratorFilter: (l) => !!(l.enrichment?.reason || l.enrichment?.notes),
     denominatorLabel: "Cancelled/Unused",
   },
+  cancelled_unreviewed: {
+    label: "Cancelled Unreviewed",
+    type: "leads",
+    description: "Cancelled leads not yet archived or with GM directive",
+    getValue: (leads) =>
+      (leads ?? []).filter((l) => l.status === "Cancelled" && !l.archived && !l.gmDirective).length,
+    format: (v) => `${v ?? 0}`,
+    getRelevant: (leads) =>
+      (leads ?? []).filter((l) => l.status === "Cancelled" && !l.archived && !l.gmDirective),
+  },
+  unused_overdue: {
+    label: "Unused Overdue",
+    type: "leads",
+    description: "Unused leads open more than 5 days",
+    getValue: (leads) =>
+      (leads ?? []).filter((l) => l.status === "Unused" && (l.daysOpen ?? 0) > 5).length,
+    format: (v) => `${v ?? 0}`,
+    getRelevant: (leads) =>
+      (leads ?? []).filter((l) => l.status === "Unused" && (l.daysOpen ?? 0) > 5),
+    lowerIsBetter: true,
+  },
 };
 
 function ComparisonCards({ config, currentValue, previousValue, currentRange, previousRange, currentCount, previousCount }) {
@@ -167,7 +188,7 @@ function ComparisonCards({ config, currentValue, previousValue, currentRange, pr
       <div className="border-2 border-[var(--hertz-primary)] rounded-lg p-4 bg-[var(--hertz-primary)]/5">
         <p className="text-[10px] font-bold text-[var(--neutral-600)] uppercase tracking-wider mb-1">Current Period</p>
         <p className="text-xs text-[var(--neutral-600)] mb-2">{formatRange(currentRange)}</p>
-        <div className="flex items-baseline gap-2">
+        <div className="flex items-center gap-2">
           <p className="text-2xl font-extrabold text-[var(--hertz-black)]">{fmtCurrent}</p>
           {relChange != null && relChange !== 0 && (
             <span

@@ -2,11 +2,13 @@ import { useState, useMemo, useRef, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useData } from "../../context/DataContext";
 import { useApp } from "../../context/AppContext";
+import BackButton from "../BackButton";
 import {
   getGMLeads,
   getDateRangePresets,
   getInsuranceCompanies,
   getLeadById,
+  getNextComplianceMeetingDate,
 } from "../../selectors/demoSelectors";
 import { orgMapping } from "../../data/mockData";
 import StatusBadge from "../StatusBadge";
@@ -42,6 +44,7 @@ export default function InteractiveGMLeadsPage() {
     [leads, dateRange, statusFilter, bmFilter, branchFilter, insuranceFilter, searchQuery]
   );
 
+  const { dateStr: meetingDateStr, daysLeft: meetingDaysLeft } = useMemo(() => getNextComplianceMeetingDate(), []);
   const selectedLead = selectedLeadId ? getLeadById(leads, selectedLeadId) : null;
 
   useEffect(() => {
@@ -63,14 +66,22 @@ export default function InteractiveGMLeadsPage() {
   };
 
   return (
-    <div className="flex h-full gap-0">
+    <div className="flex flex-col h-full gap-0">
+      <BackButton onClick={() => navigateTo("gm-todos")} label="Back to Work" />
+      <div className="flex flex-1 min-h-0 gap-0">
       {/* Left: Table */}
       <div className={`transition-all duration-300 ${selectedLead ? "w-[45%]" : "w-full"}`}>
         <div className="space-y-4">
           <div>
             <h1 className="text-2xl font-bold text-[var(--hertz-black)]">Leads</h1>
             <p className="text-sm text-[var(--neutral-600)] mt-0.5">
-              Cancelled and unused leads across all branches — {filteredLeads.length} results
+              Cancelled and unused leads across all branches — {filteredLeads.length} results.
+              Weekly Compliance Meeting: {meetingDateStr}
+              {meetingDaysLeft >= 0 && (
+                <span className="font-semibold text-[var(--hertz-black)]">
+                  — {meetingDaysLeft === 0 ? "today" : `${meetingDaysLeft} day${meetingDaysLeft !== 1 ? "s" : ""} left`}
+                </span>
+              )}
             </p>
           </div>
 
@@ -240,6 +251,7 @@ export default function InteractiveGMLeadsPage() {
           </motion.div>
         )}
       </AnimatePresence>
+      </div>
     </div>
   );
 }

@@ -1,6 +1,6 @@
 import { useMemo } from "react";
 import { motion } from "framer-motion";
-import { getGMLeadsToReviewCount } from "../selectors/demoSelectors";
+import { getGMLeadsToReviewCount, getMismatchLeads, getDateRangePresets, getNextComplianceMeetingDate } from "../selectors/demoSelectors";
 
 const cardAnim = (i, reduced = false) => ({
   initial: reduced ? false : { opacity: 0, y: 20 },
@@ -9,12 +9,23 @@ const cardAnim = (i, reduced = false) => ({
 });
 
 export default function GMLeadReviewModule({ navigateTo, leads, dateRange, reduceMotion }) {
-  const reviewCount = useMemo(
-    () => getGMLeadsToReviewCount(leads ?? [], dateRange),
-    [leads, dateRange]
-  );
+  // Use this_week for count to match Sidebar badge
+  const thisWeekRange = useMemo(() => {
+    const presets = getDateRangePresets();
+    const thisWeek = presets.find((p) => p.key === "this_week");
+    return thisWeek ? { start: thisWeek.start, end: thisWeek.end } : null;
+  }, []);
+
+  // Match Sidebar: leads to review + mismatch leads
+  const reviewCount = useMemo(() => {
+    const range = thisWeekRange ?? dateRange;
+    const toReview = getGMLeadsToReviewCount(leads ?? [], range);
+    const mismatches = getMismatchLeads(leads ?? []).length;
+    return toReview + mismatches;
+  }, [leads, thisWeekRange, dateRange]);
 
   const hasItems = reviewCount > 0;
+  const { dateStr, daysLeft } = getNextComplianceMeetingDate();
 
   return (
     <motion.div {...cardAnim(1, reduceMotion)}>
@@ -24,15 +35,14 @@ export default function GMLeadReviewModule({ navigateTo, leads, dateRange, reduc
         whileTap={!reduceMotion ? { scale: 0.995 } : {}}
         className={`w-full text-left border-2 rounded-xl p-5 transition-all duration-200 cursor-pointer group
           ${hasItems
-            ? "bg-red-50 border-red-200 hover:border-red-300 hover:shadow-[var(--shadow-lg)]"
+            ? "bg-[var(--hertz-primary-subtle)] border-[var(--hertz-primary)] shadow-[0_0_0_2px_rgba(255,209,0,0.4)] hover:shadow-[var(--shadow-lg)]"
             : "border-[var(--neutral-200)] hover:border-[var(--hertz-primary)] hover:shadow-[var(--shadow-lg)] bg-white hover:bg-[var(--hertz-primary-subtle)]"
-          }`}
+          }
+          ${hasItems && !reduceMotion ? "animate-hertz-pulse" : ""}`}
       >
         <div className="flex items-center justify-between gap-4">
-          <div className="flex items-center gap-4 min-w-0">
-            <div className={`shrink-0 w-12 h-12 rounded-lg flex items-center justify-center ${
-              hasItems ? "bg-red-100 text-red-700" : "bg-[var(--hertz-primary)] text-[var(--hertz-black)]"
-            }`}>
+          <div className="flex items-center gap-4 min-w-0 flex-1">
+            <div className="shrink-0 w-12 h-12 rounded-lg flex items-center justify-center bg-[var(--hertz-primary)] text-[var(--hertz-black)]">
               <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
               </svg>
@@ -44,11 +54,22 @@ export default function GMLeadReviewModule({ navigateTo, leads, dateRange, reduc
               <p className="text-sm text-[var(--neutral-600)] mt-0.5">
                 {reviewCount > 0 ? (
                   <>
-                    <strong className={hasItems ? "text-red-700" : "text-[var(--hertz-black)]"}>{reviewCount}</strong>
-                    {reviewCount === 1 ? " lead" : " leads"} pending review — cancelled unreviewed and unused overdue leads needing your attention.
+                    <strong className="text-[var(--hertz-black)]">{reviewCount}</strong>
+                    {reviewCount === 1 ? " lead" : " leads"} pending review.
                   </>
                 ) : (
-                  "No leads pending review. All cancelled and unused leads have been addressed."
+                  "No leads pending review."
+                )}
+              </p>
+              <p className="text-xs font-medium text-[var(--hertz-black)] mt-2 flex items-center gap-1.5">
+                <svg className="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                </svg>
+                Next Meeting: {dateStr}
+                {daysLeft >= 0 && (
+                  <span className="font-semibold">
+                    — {daysLeft === 0 ? "today" : `${daysLeft} day${daysLeft !== 1 ? "s" : ""} left`}
+                  </span>
                 )}
               </p>
             </div>

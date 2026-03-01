@@ -89,6 +89,12 @@ export function getComparisonDateRange(selectedPresetKey, customStart, customEnd
   return null;
 }
 
+/** Compute relative change (percentage) for period-over-period comparison. Used consistently across all metric tiles with time filters. */
+export function relChange(current, previous) {
+  if (previous == null || previous === 0) return current > 0 ? 100 : 0;
+  return Math.round(((current - previous) / previous) * 100);
+}
+
 /** Check if a lead falls within a date range. Uses week_of or init_dt_final (lead received date) to align with Leads table semantics — not lastActivity. */
 function leadInDateRange(lead, start, end) {
   const weekOf = lead.weekOf ?? lead.week_of;
@@ -129,6 +135,20 @@ export function getLeadsForBranchInRange(leads, dateRange, branch) {
     filtered = filtered.filter((l) => leadInDateRange(l, dateRange.start, dateRange.end));
   }
   return filtered;
+}
+
+/** Leads with any outstanding compliance item (cancelled unreviewed, unused overdue, missing comments, mismatch). Used for GM auto-create tasks. */
+export function getLeadsWithOutstandingItemsForBranch(leads, dateRange, branch) {
+  const branchLeads = getLeadsForBranchInRange(leads ?? [], dateRange, branch);
+  const hasOutstanding = (l) => {
+    if (l.status === "Cancelled" && !l.archived && !l.gmDirective) return true;
+    if (l.status === "Unused" && (l.daysOpen ?? 0) > 5) return true;
+    const actionable = l.status === "Cancelled" || l.status === "Unused";
+    if (actionable && !(l.enrichment?.reason || l.enrichment?.notes)) return true;
+    if (l.mismatch) return true;
+    return false;
+  };
+  return branchLeads.filter(hasOutstanding);
 }
 
 export function getUnresolvedLeads(leads) {
@@ -179,6 +199,11 @@ export function getLeadById(leads, id) {
 // Branch selectors
 export function getBranches(leads) {
   return [...new Set((leads ?? []).map((l) => l.branch))];
+}
+
+/** Unique zones from org mapping (for GM filters). */
+export function getZones() {
+  return [...new Set(orgMapping.map((r) => r.zone).filter(Boolean))].sort();
 }
 
 export function getBranchManagers() {
@@ -763,6 +788,39 @@ export function getTasksForLead(leadId, tasksList) {
   return list.filter((t) => t.leadId === leadId);
 }
 
+/** Open tasks across GM's branches — for meeting prep "chase up" view. Sorted by urgency: overdue first, then due soon, then by priority. */
+export function getTasksForGMBranches(tasksList, gmName = "D. Williams") {
+  const list = tasksList ?? tasks;
+  const myBranches = orgMapping.filter((r) => r.gm === gmName).map((r) => r.branch);
+  const open = list.filter((t) => t.status !== "Done" && myBranches.includes(t.assignedBranch));
+  const now = new Date(NOW);
+  const todayEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59);
+  const tomorrowEnd = new Date(todayEnd.getTime() + 86400000);
+
+  return [...open].sort((a, b) => {
+    const aDue = a.dueDate ? new Date(a.dueDate + "T23:59:59").getTime() : Infinity;
+    const bDue = b.dueDate ? new Date(b.dueDate + "T23:59:59").getTime() : Infinity;
+    const aOverdue = aDue < now.getTime() ? 1 : 0;
+    const bOverdue = bDue < now.getTime() ? 1 : 0;
+    if (aOverdue !== bOverdue) return bOverdue - aOverdue; // overdue first
+    if (aDue !== bDue) return aDue - bDue; // sooner due first
+    const pri = { High: 0, Medium: 1, Low: 2 };
+    return (pri[a.priority] ?? 1) - (pri[b.priority] ?? 1);
+  });
+}
+
+/** GM tasks progress: total, completed, open, and progress % for meeting prep modules. */
+export function getGMTasksProgress(tasksList, gmName = "D. Williams") {
+  const list = tasksList ?? tasks;
+  const myBranches = orgMapping.filter((r) => r.gm === gmName).map((r) => r.branch);
+  const gmTasks = list.filter((t) => myBranches.includes(t.assignedBranch));
+  const total = gmTasks.length;
+  const completed = gmTasks.filter((t) => t.status === "Done").length;
+  const open = total - completed;
+  const progressPct = total > 0 ? Math.round((completed / total) * 100) : 100;
+  return { total, completed, open, progressPct };
+}
+
 function chartGranularity(presetKey, dateRange) {
   if (presetKey === "this_week") return "day";
   if (presetKey === "trailing_4_weeks") return "week";
@@ -1197,6 +1255,55 @@ export function getGMDashboardStats(leads, dateRange = null) {
   };
 }
 
+/**
+ * Unreachable leads: Cancelled or Unused leads in the date range where no contact was
+ * ever attempted. The canonical signal is contactRange === "NO CONTACT" (the same bucket
+ * already used in the time-to-contact distribution). This is David's "Bucket 3" — leads
+ * that slipped through entirely without a single call, email, or SMS from branch or HRD.
+ */
+export function getUnreachableLeads(leads, dateRange = null) {
+  let filtered = leads ?? [];
+  if (dateRange?.start || dateRange?.end) {
+    filtered = filtered.filter((l) => leadInDateRange(l, dateRange.start, dateRange.end));
+  }
+  filtered = filtered.filter((l) => l.status === "Cancelled" || l.status === "Unused");
+  return filtered.filter(
+    (l) =>
+      (l.contactRange ?? l.contact_range) === "NO CONTACT" ||
+      ((l.firstContactBy ?? l.first_contact_by) === "none" &&
+        !(l.timeToFirstContact ?? l.time_to_first_contact))
+  );
+}
+
+/**
+ * Aggregated stats for the Unreachable Leads tile in GM Meeting Prep.
+ * Returns count, pct (of all Cancelled/Unused), and a per-branch breakdown for the
+ * expandable leads table.
+ */
+export function getUnreachableLeadsStats(leads, dateRange = null) {
+  let allFiltered = leads ?? [];
+  if (dateRange?.start || dateRange?.end) {
+    allFiltered = allFiltered.filter((l) => leadInDateRange(l, dateRange.start, dateRange.end));
+  }
+  allFiltered = allFiltered.filter((l) => l.status !== "Reviewed");
+  const actionable = allFiltered.filter((l) => l.status === "Cancelled" || l.status === "Unused");
+
+  const unreachable = getUnreachableLeads(leads, dateRange);
+  const count = unreachable.length;
+  const pct = actionable.length ? Math.round((count / actionable.length) * 100) : 0;
+
+  const byBranch = {};
+  for (const lead of unreachable) {
+    if (!byBranch[lead.branch]) byBranch[lead.branch] = [];
+    byBranch[lead.branch].push(lead);
+  }
+  const branchBreakdown = Object.entries(byBranch)
+    .map(([branch, branchLeads]) => ({ branch, count: branchLeads.length, leads: branchLeads }))
+    .sort((a, b) => b.count - a.count);
+
+  return { count, pct, total: actionable.length, branchBreakdown, leads: unreachable };
+}
+
 /** Contact range distribution from real leads (for Time to First Contact bar chart). */
 export function getContactRangeDistribution(leads, dateRange = null) {
   let filtered = leads ?? [];
@@ -1223,21 +1330,23 @@ export function getContactRangeDistribution(leads, dateRange = null) {
   });
 }
 
-/** GM metric trend by week — like getMetricTrendByWeek but across all branches (branch=null means no filter). */
+/** GM metric trend by week — like getMetricTrendByWeek but across all branches (branch=null means no filter).
+ * Uses the SAME date range and period logic as BM Summary (getPeriodsForRange + getLeadDateForPeriod + leadToPeriodKey)
+ * so the chart reads from the same data and shows consistent results. */
 export function getGMMetricTrendByWeek(leads, opts = {}) {
   const { metric = "conversion_rate", groupBy, timeframe = "trailing_4_weeks" } = opts;
 
-  const numWeeks = TREND_TIMEFRAME_WEEKS[timeframe] ?? TREND_TIMEFRAME_WEEKS.trailing_4_weeks;
-  const currentMonday = getCurrentWeekMonday();
-  const weeks = [];
-  for (let i = numWeeks - 1; i >= 0; i--) {
-    const d = new Date(currentMonday + "T00:00:00");
-    d.setDate(d.getDate() - i * 7);
-    weeks.push(d.toISOString().split("T")[0]);
-  }
+  const presets = getDateRangePresets();
+  const preset = presets.find((p) => p.key === timeframe);
+  if (!preset) return { weeks: [], weekLabels: [], series: [{ name: "Value", values: [] }], counts: [], aggregateRate: [] };
+
+  const dateRange = { start: preset.start, end: preset.end };
+  const gran = chartGranularity(timeframe, dateRange);
+  const periods = getPeriodsForRange(dateRange, timeframe);
+  const weeks = periods.map((p) => p.key);
+  const weekLabels = periods.map((p) => p.label);
 
   let filtered = (leads ?? []).filter((l) => l.status !== "Reviewed");
-  const weekLabels = weeks.map((w) => formatWeekLabel(w));
 
   const getValueForWeek = (weekLeads, metricKey) => {
     if (weekLeads.length === 0) return null;
@@ -1275,11 +1384,13 @@ export function getGMMetricTrendByWeek(leads, opts = {}) {
     return "Value";
   };
 
-  const counts = weeks.map((weekOf) => filtered.filter((l) => getWeekOfForLead(l) === weekOf).length);
+  const leadPeriodKey = (l) => leadToPeriodKey(getLeadDateForPeriod(l), gran);
+
+  const counts = weeks.map((weekOf) => filtered.filter((l) => leadPeriodKey(l) === weekOf).length);
 
   if (!groupBy || !GROUP_ATTRS.includes(groupBy)) {
     const values = weeks.map((weekOf) => {
-      const weekLeads = filtered.filter((l) => getWeekOfForLead(l) === weekOf);
+      const weekLeads = filtered.filter((l) => leadPeriodKey(l) === weekOf);
       return getValueForWeek(weekLeads, metric);
     });
     return { weeks, weekLabels, series: [{ name: getSeriesName(metric), values }], counts, aggregateRate: values };
@@ -1298,13 +1409,13 @@ export function getGMMetricTrendByWeek(leads, opts = {}) {
   const series = sortedKeys.map((k) => ({
     name: k,
     values: weeks.map((weekOf) => {
-      const weekLeads = filtered.filter((l) => getWeekOfForLead(l) === weekOf && getLeadGroupKey(l, groupBy) === k);
+      const weekLeads = filtered.filter((l) => leadPeriodKey(l) === weekOf && getLeadGroupKey(l, groupBy) === k);
       return getValueForWeek(weekLeads, metric);
     }),
   }));
 
   const aggregateRate = weeks.map((weekOf) => {
-    const weekLeads = filtered.filter((l) => getWeekOfForLead(l) === weekOf);
+    const weekLeads = filtered.filter((l) => leadPeriodKey(l) === weekOf);
     return getValueForWeek(weekLeads, metric);
   });
 
@@ -1472,4 +1583,136 @@ export function getGMLeadsToReviewCount(leads, dateRange = null) {
   const cancelled = filtered.filter((l) => l.status === "Cancelled" && !l.archived && !l.gmDirective).length;
   const unusedOverdue = filtered.filter((l) => l.status === "Unused" && (l.daysOpen ?? 0) > 5).length;
   return cancelled + unusedOverdue;
+}
+
+// ─── Presentation Selectors ───────────────────────────────────────────────────
+
+/**
+ * Conversion by branch for presentation Slide 1.
+ * Returns branches sorted by conversion rate desc, with current/prev period stats and trend delta.
+ */
+export function getConversionByBranch(leads, dateRange, compRange = null, gmName = "D. Williams") {
+  const myBranches = orgMapping.filter((r) => r.gm === gmName).map((r) => r.branch);
+
+  const data = myBranches.map((branch) => {
+    const curr = getLeadsForBranchInRange(leads ?? [], dateRange, branch);
+    const prev = compRange ? getLeadsForBranchInRange(leads ?? [], compRange, branch) : [];
+
+    const total = curr.length;
+    const rented = curr.filter((l) => l.status === "Rented").length;
+    const cancelled = curr.filter((l) => l.status === "Cancelled").length;
+    const unused = curr.filter((l) => l.status === "Unused").length;
+    const conversionRate = total ? Math.round((rented / total) * 100) : null;
+
+    const prevTotal = prev.length;
+    const prevRented = prev.filter((l) => l.status === "Rented").length;
+    const prevConversionRate = prevTotal ? Math.round((prevRented / prevTotal) * 100) : null;
+
+    const delta = conversionRate !== null && prevConversionRate !== null ? conversionRate - prevConversionRate : null;
+    const row = orgMapping.find((r) => r.branch === branch);
+
+    return { branch, bmName: row?.bm ?? "—", total, rented, cancelled, unused, conversionRate, prevConversionRate, delta };
+  });
+
+  return data
+    .sort((a, b) => (b.conversionRate ?? -1) - (a.conversionRate ?? -1))
+    .map((d, i) => ({ ...d, rank: i + 1 }));
+}
+
+/**
+ * Conversion by insurance company for presentation Slide 2.
+ * Returns insurers sorted by total volume desc (State Farm typically first), with trend delta.
+ */
+export function getConversionByInsurer(leads, dateRange, compRange = null, gmName = "D. Williams") {
+  const myBranches = orgMapping.filter((r) => r.gm === gmName).map((r) => r.branch);
+
+  let currLeads = (leads ?? []).filter((l) => myBranches.includes(l.branch));
+  if (dateRange?.start || dateRange?.end) {
+    currLeads = currLeads.filter((l) => leadInDateRange(l, dateRange.start, dateRange.end));
+  }
+
+  let prevLeads = (leads ?? []).filter((l) => myBranches.includes(l.branch));
+  if (compRange?.start || compRange?.end) {
+    prevLeads = prevLeads.filter((l) => leadInDateRange(l, compRange.start, compRange.end));
+  } else {
+    prevLeads = [];
+  }
+
+  const insurers = [...new Set(currLeads.map((l) => l.insuranceCompany).filter(Boolean))];
+
+  const data = insurers.map((insurer) => {
+    const curr = currLeads.filter((l) => l.insuranceCompany === insurer);
+    const prev = prevLeads.filter((l) => l.insuranceCompany === insurer);
+
+    const total = curr.length;
+    const rented = curr.filter((l) => l.status === "Rented").length;
+    const cancelled = curr.filter((l) => l.status === "Cancelled").length;
+    const unused = curr.filter((l) => l.status === "Unused").length;
+    const conversionRate = total ? Math.round((rented / total) * 100) : null;
+
+    const prevTotal = prev.length;
+    const prevRented = prev.filter((l) => l.status === "Rented").length;
+    const prevConversionRate = prevTotal ? Math.round((prevRented / prevTotal) * 100) : null;
+    const delta = conversionRate !== null && prevConversionRate !== null ? conversionRate - prevConversionRate : null;
+
+    return { insurer, total, rented, cancelled, unused, conversionRate, prevConversionRate, delta };
+  });
+
+  return data
+    .sort((a, b) => b.total - a.total)
+    .map((d, i) => ({ ...d, rank: i + 1 }));
+}
+
+/**
+ * Week-by-week stacked data for a branch (or zone-level if branch = null).
+ * Always returns the last 4 calendar weeks. Used for presentation stacked bar charts.
+ */
+export function getStackedWeeklyByBranch(leads, branch = null, gmName = "D. Williams") {
+  const myBranches = orgMapping.filter((r) => r.gm === gmName).map((r) => r.branch);
+
+  // Trailing 4 weeks from NOW
+  const end = new Date(NOW);
+  end.setHours(23, 59, 59, 999);
+  const start = new Date(end.getTime() - 27 * 86400000);
+
+  let filtered = (leads ?? []).filter((l) => leadInDateRange(l, start, end));
+  if (branch) {
+    filtered = filtered.filter((l) => l.branch === branch);
+  } else {
+    filtered = filtered.filter((l) => myBranches.includes(l.branch));
+  }
+
+  const weekMap = new Map();
+  for (const l of filtered) {
+    const weekKey = l.weekOf ?? l.week_of;
+    if (!weekKey) continue;
+    const wkDate = getMonday(new Date(weekKey));
+    const key = wkDate.toISOString().slice(0, 10);
+    if (!weekMap.has(key)) weekMap.set(key, { date: wkDate, rented: 0, cancelled: 0, unused: 0 });
+    const entry = weekMap.get(key);
+    if (l.status === "Rented") entry.rented++;
+    else if (l.status === "Cancelled") entry.cancelled++;
+    else if (l.status === "Unused") entry.unused++;
+  }
+
+  return [...weekMap.entries()]
+    .sort(([a], [b]) => a.localeCompare(b))
+    .slice(-4)
+    .map(([key, v]) => ({
+      weekOf: key,
+      label: v.date.toLocaleDateString("en-US", { month: "short", day: "numeric" }),
+      rented: v.rented,
+      cancelled: v.cancelled,
+      unused: v.unused,
+      total: v.rented + v.cancelled + v.unused,
+    }));
+}
+
+/**
+ * Returns Wins & Learnings entries for a GM, sorted newest first.
+ */
+export function getWinsLearningsForGM(winsLearnings, gmName = "D. Williams") {
+  return (winsLearnings ?? [])
+    .filter((e) => e.gmName === gmName)
+    .sort((a, b) => new Date(b.createdAt ?? b.weekOf) - new Date(a.createdAt ?? a.weekOf));
 }

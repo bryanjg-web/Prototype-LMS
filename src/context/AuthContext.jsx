@@ -2,7 +2,17 @@ import { createContext, useContext, useEffect, useState, useCallback } from "rea
 import { supabase } from "../lib/supabase";
 import { useApp } from "./AppContext";
 
-const AuthContext = createContext(null);
+const defaultAuthValue = {
+  signIn: async () => {},
+  signOut: async () => {},
+  loading: false,
+  userProfile: null,
+  profileError: null,
+  updateProfile: async () => {},
+  completeOnboarding: async () => {},
+};
+
+const AuthContext = createContext(defaultAuthValue);
 
 export function AuthProvider({ children }) {
   const { setRole } = useApp();
@@ -111,7 +121,5 @@ export function AuthProvider({ children }) {
 }
 
 export function useAuth() {
-  const ctx = useContext(AuthContext);
-  if (!ctx) throw new Error("useAuth must be used within AuthProvider");
-  return ctx;
+  return useContext(AuthContext);
 }

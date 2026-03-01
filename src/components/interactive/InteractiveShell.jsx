@@ -29,6 +29,8 @@ const viewComponents = {
   "gm-team-performance": InteractiveDashboard,
   "gm-todos": InteractiveDashboard,
   "gm-meeting-prep": InteractiveGMMeetingPrepPage,
+  "gm-task-detail": InteractiveTaskDetail,
+  "gm-lead-detail": InteractiveLeadDetail,
   "gm-lead-review": InteractiveGMLeadsPage,
   "gm-leaderboard": InteractiveGMLeaderboardPage,
   "admin-dashboard": InteractiveDashboard,
@@ -41,7 +43,7 @@ const viewComponents = {
 // Views that share the same scrollable page - use stable key to avoid remount/refresh
 // Meeting Prep and Leaderboard are separate pages; Summary (dashboard) has Home, Work, My Leads + Open Tasks
 const BM_MAIN_VIEWS = ["bm-home", "bm-dashboard", "bm-leads", "bm-todo"];
-const GM_MAIN_VIEWS = ["gm-overview", "gm-business-metrics", "gm-team-performance", "gm-todos"];
+const GM_MAIN_VIEWS = ["gm-overview", "gm-todos", "gm-business-metrics", "gm-team-performance"];
 
 function getShellKey(activeView) {
   if (BM_MAIN_VIEWS.includes(activeView)) return "bm-main";

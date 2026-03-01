@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { motion } from "framer-motion";
 import { useApp } from "../../context/AppContext";
+import BackButton from "../BackButton";
 import { useData } from "../../context/DataContext";
 import { getCancelledLeads, getLeadById } from "../../selectors/demoSelectors";
 import ThreeColumnReview from "../ThreeColumnReview";
@@ -28,12 +29,7 @@ export default function InteractiveThreeColumn() {
 
   return (
     <div>
-      <button
-        onClick={() => navigateTo("gm-cancelled")}
-        className="text-sm text-[#6E6E6E] hover:text-[#1A1A1A] mb-4 inline-block cursor-pointer"
-      >
-        ← Back to cancelled leads
-      </button>
+      <BackButton onClick={() => navigateTo("gm-lead-review")} label="Back to leads" />
 
       {/* Mini lead selector */}
       <div className="flex gap-2 mb-4 flex-wrap">

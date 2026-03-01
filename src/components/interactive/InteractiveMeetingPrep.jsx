@@ -3,7 +3,7 @@
  * Output metrics first (unified cards), then input metrics below.
  * Completion bar = missing lead updates; click to expand and show outstanding leads.
  */
-import { useMemo, useState } from "react";
+import { useMemo, useState, useCallback } from "react";
 import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
 import { useAuth } from "../../context/AuthContext";
 import { useData } from "../../context/DataContext";
@@ -20,15 +20,18 @@ import {
   getMismatchLeadsInRange,
   getMismatchReason,
   getTasksForBranch,
+  getNextComplianceMeetingDate,
+  relChange,
 } from "../../selectors/demoSelectors";
+import { orgMapping } from "../../data/mockData";
 import MeetingPrepLeadQueue from "../MeetingPrepLeadQueue";
 import MeetingPrepLeadPanel from "./MeetingPrepLeadPanel";
 import MetricDrilldownModal from "../MetricDrilldownModal";
 
 const easeOut = [0.4, 0, 0.2, 1];
 
-/** Unified metric card — same structure for output and input metrics. Optional onClick for drilldown. */
-function MetricCard({ label, value, subtext, children, className = "", variant = "default", onClick }) {
+/** Unified metric card — same structure for output and input metrics. Optional onClick for drilldown. Supports relChange for period-over-period comparison. */
+function MetricCard({ label, value, subtext, children, className = "", variant = "default", onClick, relChange: relChangeVal, lowerIsBetter, showChangeTag }) {
   const isHighlight = variant === "highlight";
   const isAlert = variant === "alert";
   const isClickable = !!onClick;
@@ -46,7 +49,7 @@ function MetricCard({ label, value, subtext, children, className = "", variant =
         isAlert
           ? "border-[var(--color-error)]/40 bg-[var(--color-error-light)]"
           : "border-[var(--neutral-200)]"
-      } ${isClickable ? "cursor-pointer group transition-[border-color] duration-200 hover:border-[var(--hertz-primary)]/40" : ""} ${className}`}
+      } ${isClickable ? "cursor-pointer group transition-all duration-200 hover:ring-2 hover:ring-[var(--hertz-primary)]/50" : ""} ${className}`}
     >
       <div className="flex items-center justify-between gap-2 mb-2">
         <p
@@ -69,13 +72,29 @@ function MetricCard({ label, value, subtext, children, className = "", variant =
       </div>
       {children || (
         <>
-          <p
-            className={`text-2xl font-bold ${
-              isHighlight ? "text-[var(--hertz-primary)]" : "text-[var(--hertz-black)]"
-            } ${isAlert ? "text-[var(--color-error)]" : ""}`}
-          >
-            {value}
-          </p>
+          <div className="flex items-center gap-2 flex-wrap">
+            <p
+              className={`text-2xl font-bold ${
+                isHighlight ? "text-[var(--hertz-primary)]" : "text-[var(--hertz-black)]"
+              } ${isAlert ? "text-[var(--color-error)]" : ""}`}
+            >
+              {value}
+            </p>
+            {showChangeTag && relChangeVal != null && (
+              <span
+                className={`text-xs font-semibold px-1.5 py-0.5 rounded ${
+                  lowerIsBetter
+                    ? (relChangeVal > 0 ? "bg-[#C62828]/15 text-[#C62828]" : relChangeVal < 0 ? "bg-[#2E7D32]/15 text-[#2E7D32]" : "bg-[var(--neutral-100)] text-[var(--neutral-600)]")
+                    : (relChangeVal > 0 ? "bg-[#2E7D32]/15 text-[#2E7D32]" : relChangeVal < 0 ? "bg-[#C62828]/15 text-[#C62828]" : "bg-[var(--neutral-100)] text-[var(--neutral-600)]")
+                }`}
+              >
+                {lowerIsBetter
+                  ? (relChangeVal > 0 ? "↑" : relChangeVal < 0 ? "↓" : "—")
+                  : (relChangeVal > 0 ? "↑" : relChangeVal < 0 ? "↓" : "—")}
+                {relChangeVal !== 0 ? `${Math.abs(relChangeVal)}%` : ""}
+              </span>
+            )}
+          </div>
           {subtext && (
             <p className="text-xs text-[var(--neutral-600)] mt-1">{subtext}</p>
           )}
@@ -87,7 +106,7 @@ function MetricCard({ label, value, subtext, children, className = "", variant =
 
 export default function InteractiveMeetingPrep() {
   const { userProfile } = useAuth();
-  const { leads, refetchLeads } = useData();
+  const { leads, refetchLeads, winsLearnings, submitWinsLearning } = useData();
   const branch = userProfile?.branch ?? getDefaultBranchForDemo();
 
   const [includeRented, setIncludeRented] = useState(false);
@@ -96,8 +115,40 @@ export default function InteractiveMeetingPrep() {
   const [mismatchExpanded, setMismatchExpanded] = useState(false);
   const [drilldownMetric, setDrilldownMetric] = useState(null);
   const [leadsExpanded, setLeadsExpanded] = useState(false);
+  const [wlText, setWlText] = useState("");
+  const [wlSubmitting, setWlSubmitting] = useState(false);
+  const [wlSubmitted, setWlSubmitted] = useState(false);
   const reduceMotion = useReducedMotion();
   const branchTasks = useMemo(() => getTasksForBranch(branch), [branch]);
+  const { dateStr: meetingDateStr, daysLeft: meetingDaysLeft } = useMemo(() => getNextComplianceMeetingDate(), []);
+
+  // Wins & Learnings — BM's own submissions for this branch
+  const bmName = userProfile?.name ?? "Sarah Chen";
+  const gmName = useMemo(() => orgMapping.find((r) => r.branch === branch)?.gm ?? null, [branch]);
+  const myWinsLearnings = useMemo(
+    () => (winsLearnings ?? []).filter((e) => e.branch === branch).sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)),
+    [winsLearnings, branch]
+  );
+  const handleSubmitWL = useCallback(async () => {
+    const text = wlText.trim();
+    if (!text || wlSubmitting) return;
+    setWlSubmitting(true);
+    try {
+      // Append BM name at end so GM can identify who submitted
+      const content = text.endsWith(`— ${bmName}`) ? text : `${text} — ${bmName}`;
+      // Use the Monday of the current week from presets (consistent with weekOf convention throughout app)
+      const thisWeekPreset = getDateRangePresets().find((p) => p.key === "this_week");
+      const weekOf = thisWeekPreset ? thisWeekPreset.start.toISOString().slice(0, 10) : new Date("2026-02-16").toISOString().slice(0, 10);
+      await submitWinsLearning({ bmName, branch, gmName, content, weekOf });
+      setWlText("");
+      setWlSubmitted(true);
+      setTimeout(() => setWlSubmitted(false), 3000);
+    } catch (err) {
+      console.error("[InteractiveMeetingPrep] submitWinsLearning failed:", err);
+    } finally {
+      setWlSubmitting(false);
+    }
+  }, [wlText, wlSubmitting, bmName, branch, gmName, submitWinsLearning]);
 
   const presets = getDateRangePresets();
   const [selectedPresetKey, setSelectedPresetKey] = useState("this_week");
@@ -179,29 +230,32 @@ export default function InteractiveMeetingPrep() {
           100,
       )
     : null;
-  const conversionTrend =
-    prevConversion != null &&
-    conversionThisPeriod != null &&
-    prevConversion > 0
-      ? Math.round(
-          ((conversionThisPeriod - prevConversion) / prevConversion) * 100,
-        )
-      : null;
   const trailing4Week = getBranchTrailing4WeekConversionRate(leads ?? [], branch);
   const zoneRate = getZoneConversionRate(leads ?? [], branch);
 
   // Input metrics
   const pctWithin30 = getPctContactedWithin30Min(periodLeads);
+  const prevPctWithin30 = getPctContactedWithin30Min(comparisonLeads);
   const { branch: branchContact, hrd: hrdContact } =
     getBranchVsHrdSplit(periodLeads);
   const branchHrdTotal = branchContact + hrdContact;
   const branchHrdPct = branchHrdTotal
     ? Math.round((branchContact / branchHrdTotal) * 100)
     : null;
+  const prevBranchSplit = getBranchVsHrdSplit(comparisonLeads);
+  const prevBranchHrdTotal = prevBranchSplit.branch + prevBranchSplit.hrd;
+  const prevBranchHrdPct = prevBranchHrdTotal
+    ? Math.round((prevBranchSplit.branch / prevBranchHrdTotal) * 100)
+    : null;
   const commentRate =
     totalActionable > 0
       ? Math.round((leadsWithComments.length / totalActionable) * 100)
       : null;
+  const comparisonActionable = comparisonLeads.filter((l) => l.status === "Cancelled" || l.status === "Unused");
+  const comparisonWithComments = comparisonActionable.filter((l) => l.enrichment?.reason || l.enrichment?.notes);
+  const prevCommentRate = comparisonActionable.length > 0
+    ? Math.round((comparisonWithComments.length / comparisonActionable.length) * 100)
+    : null;
 
   const handleLeadClick = (lead) => {
     setPanelLead(lead);
@@ -229,9 +283,17 @@ export default function InteractiveMeetingPrep() {
           />
         )}
       </AnimatePresence>
-      <h2 className="text-xl font-semibold text-[var(--hertz-black)] mb-6">
+      <h2 className="text-xl font-semibold text-[var(--hertz-black)] mb-1">
         Meeting Prep
       </h2>
+      <p className="text-sm text-[var(--neutral-600)] mb-6">
+        Weekly Compliance Meeting: {meetingDateStr}
+        {meetingDaysLeft >= 0 && (
+          <span className="font-semibold text-[var(--hertz-black)]">
+            — {meetingDaysLeft === 0 ? "today" : `${meetingDaysLeft} day${meetingDaysLeft !== 1 ? "s" : ""} left`}
+          </span>
+        )}
+      </p>
 
       <div className="flex items-center gap-4 mb-6">
         <label className="text-sm font-medium text-[var(--hertz-black)]">
@@ -271,23 +333,9 @@ export default function InteractiveMeetingPrep() {
               label="Conversion rate"
               value={conversionThisPeriod != null ? `${conversionThisPeriod}%` : "—"}
               onClick={() => setDrilldownMetric("conversion_rate")}
-              subtext={
-                <>
-                  This period · 4‑wk avg {trailing4Week ?? "—"}% · Zone {zoneRate ?? "—"}%
-                  {conversionTrend != null && conversionTrend !== 0 && (
-                    <span
-                      className={`ml-2 font-medium px-1.5 py-0.5 rounded ${
-                        conversionTrend > 0
-                          ? "bg-[#2E7D32]/15 text-[#2E7D32]"
-                          : "bg-[#C62828]/15 text-[#C62828]"
-                      }`}
-                    >
-                      {conversionTrend > 0 ? "↑" : "↓"}
-                      {Math.abs(conversionTrend)}%
-                    </span>
-                  )}
-                </>
-              }
+              subtext={`This period · 4‑wk avg ${trailing4Week ?? "—"}% · Zone ${zoneRate ?? "—"}%`}
+              relChange={relChange(conversionThisPeriod, prevConversion)}
+              showChangeTag={!!comparisonRange}
             />
           </motion.div>
           <motion.div
@@ -301,6 +349,8 @@ export default function InteractiveMeetingPrep() {
               value={totalLeads}
               subtext="Leads in this period"
               onClick={() => setDrilldownMetric("total_leads")}
+              relChange={relChange(totalLeads, comparisonLeads.length)}
+              showChangeTag={!!comparisonRange}
             />
           </motion.div>
           <motion.div
@@ -315,15 +365,14 @@ export default function InteractiveMeetingPrep() {
               value={rentedCount}
               subtext="Converted this period"
               onClick={() => setDrilldownMetric("conversion_rate")}
+              relChange={relChange(rentedCount, comparisonLeads.filter((l) => l.status === "Rented").length)}
+              showChangeTag={!!comparisonRange}
             />
           </motion.div>
         </div>
 
         {/* Input metrics — above chart */}
         <div className="mt-6 mb-6">
-          <p className="text-xs font-bold text-[var(--neutral-600)] uppercase tracking-wide mb-3">
-            Input metrics
-          </p>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             <motion.div
               initial={{ opacity: 0, y: 12 }}
@@ -336,6 +385,8 @@ export default function InteractiveMeetingPrep() {
                 value={pctWithin30 != null ? `${pctWithin30}%` : "—"}
                 subtext="First contact within 30 minutes of lead creation"
                 onClick={() => setDrilldownMetric("contacted_within_30_min")}
+                relChange={relChange(pctWithin30, prevPctWithin30)}
+                showChangeTag={!!comparisonRange}
               />
             </motion.div>
             <motion.div
@@ -353,6 +404,8 @@ export default function InteractiveMeetingPrep() {
                     : "No Cancelled or Unused leads"
                 }
                 onClick={() => setDrilldownMetric("meeting_prep_comment_rate")}
+                relChange={relChange(commentRate, prevCommentRate)}
+                showChangeTag={!!comparisonRange}
               />
             </motion.div>
             <motion.div
@@ -370,6 +423,8 @@ export default function InteractiveMeetingPrep() {
                     : "No first-contact data"
                 }
                 onClick={() => setDrilldownMetric("branch_vs_hrd_split")}
+                relChange={relChange(branchHrdPct, prevBranchHrdPct)}
+                showChangeTag={!!comparisonRange}
               />
             </motion.div>
           </div>
@@ -684,6 +739,79 @@ export default function InteractiveMeetingPrep() {
                 {leadsExpanded ? "Show less" : `View all (${queueLeads.length} leads)`}
               </motion.button>
             )}
+          </div>
+        )}
+      </div>
+
+      {/* Section 4: Wins & Learnings — BM submits before the weekly meeting */}
+      <div className="border border-[var(--neutral-200)] rounded-xl bg-white shadow-[var(--shadow-sm)] overflow-hidden">
+        <div className="px-5 py-4 border-b border-[var(--neutral-100)] flex items-center gap-3">
+          <div className="w-8 h-8 rounded-lg bg-[var(--hertz-primary)] flex items-center justify-center text-[var(--hertz-black)] shrink-0">
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+            </svg>
+          </div>
+          <div>
+            <h3 className="text-sm font-bold text-[var(--hertz-black)]">Wins &amp; Learnings</h3>
+            <p className="text-xs text-[var(--neutral-500)]">Share what worked this week — your GM will use this in the meeting</p>
+          </div>
+        </div>
+
+        {/* Submission form */}
+        <div className="px-5 py-4 border-b border-[var(--neutral-100)]">
+          <textarea
+            value={wlText}
+            onChange={(e) => setWlText(e.target.value)}
+            placeholder="e.g. Called State Farm leads within 15 minutes — converted 3 of 4. Or: struggling with Allstate cancellations, need guidance."
+            rows={3}
+            className="w-full border border-[var(--neutral-200)] rounded-lg px-3 py-2.5 text-sm text-[var(--hertz-black)] placeholder-[var(--neutral-400)] focus:outline-none focus:ring-2 focus:ring-[var(--hertz-primary)]/40 resize-none bg-[var(--neutral-50)]"
+          />
+          <div className="flex items-center justify-between mt-2.5">
+            <p className="text-xs text-[var(--neutral-400)]">Your name will be added automatically.</p>
+            <motion.button
+              type="button"
+              onClick={handleSubmitWL}
+              disabled={!wlText.trim() || wlSubmitting}
+              whileTap={!reduceMotion && wlText.trim() ? { scale: 0.97 } : {}}
+              className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-semibold transition-all ${
+                wlSubmitted
+                  ? "bg-emerald-100 text-emerald-700"
+                  : !wlText.trim() || wlSubmitting
+                  ? "bg-[var(--neutral-100)] text-[var(--neutral-400)] cursor-not-allowed"
+                  : "bg-[var(--hertz-primary)] text-[var(--hertz-black)] hover:bg-[var(--hertz-primary-hover)] cursor-pointer"
+              }`}
+            >
+              {wlSubmitted ? (
+                <>
+                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
+                  </svg>
+                  Submitted!
+                </>
+              ) : wlSubmitting ? (
+                <>
+                  <span className="inline-block w-3 h-3 border-2 border-current border-t-transparent rounded-full animate-spin" />
+                  Submitting…
+                </>
+              ) : (
+                "Submit"
+              )}
+            </motion.button>
+          </div>
+        </div>
+
+        {/* Prior submissions from this BM */}
+        {myWinsLearnings.length > 0 && (
+          <div className="divide-y divide-[var(--neutral-100)]">
+            {myWinsLearnings.slice(0, 4).map((entry) => (
+              <div key={entry.id} className="px-5 py-3 flex items-start gap-2.5">
+                <div className="w-1.5 h-1.5 rounded-full bg-[var(--hertz-primary)] mt-2 shrink-0" />
+                <div className="min-w-0">
+                  <p className="text-sm text-[var(--hertz-black)] leading-relaxed">{entry.content}</p>
+                  <p className="text-xs text-[var(--neutral-400)] mt-0.5">{entry.weekOf}</p>
+                </div>
+              </div>
+            ))}
           </div>
         )}
       </div>

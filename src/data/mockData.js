@@ -574,6 +574,15 @@ export const nextActions = [
   "Other (see notes)",
 ];
 
+// Wins & Learnings submitted by BMs before the weekly compliance meeting
+export const winsLearnings = [
+  { id: "wl-1", bmName: "M. Johnson", branch: "Santa Monica", gmName: "D. Williams", content: "Called State Farm leads within 15 minutes of reservation — converted 3 out of 4 this week. Immediate callback before they find alternatives is the key. — M. Johnson", weekOf: "2026-02-16", createdAt: "2026-02-19T08:30:00Z" },
+  { id: "wl-2", bmName: "J. Smith",   branch: "Downtown LA",  gmName: "D. Williams", content: "Template SMS for Progressive leads cut our unreachables in half. Happy to share the template with other branches. — J. Smith",                                 weekOf: "2026-02-16", createdAt: "2026-02-19T09:15:00Z" },
+  { id: "wl-3", bmName: "A. Garcia",  branch: "Pasadena",     gmName: "D. Williams", content: "Farmers leads are taking the longest to convert — averaging 3 contact attempts. Is there a zone-wide pattern? Would love guidance. — A. Garcia",            weekOf: "2026-02-16", createdAt: "2026-02-19T10:00:00Z" },
+  { id: "wl-4", bmName: "T. Brown",   branch: "Anaheim",      gmName: "D. Williams", content: "Converted 2 previously unused leads by contacting the body shop directly rather than the customer. Will try this again next week. — T. Brown",              weekOf: "2026-02-09", createdAt: "2026-02-12T08:45:00Z" },
+  { id: "wl-5", bmName: "S. Lee",     branch: "Long Beach",   gmName: "D. Williams", content: "Still struggling with Allstate cancellations — customers citing price difference vs competitors. Need guidance on retention messaging. — S. Lee",            weekOf: "2026-02-09", createdAt: "2026-02-12T09:30:00Z" },
+];
+
 // Mock tasks (GM-assigned to BMs) — every task attributed to a lead
 // notesLog: append-only log like TRANSLOG activity [{ time, timestamp, author, note }]
 export const tasks = [

@@ -15,23 +15,23 @@ export const roleNav = {
     { id: "bm-todo", label: "Open Tasks", icon: "check-circle", sectionId: "open-tasks", parentId: "bm-dashboard" },
   ],
   gm: [
-    { id: "gm-overview", label: "Overview", icon: "grid" },
-    { id: "gm-business-metrics", label: "Business Metrics", icon: "bar-chart", sectionId: "business-metrics", parentId: "gm-overview" },
-    { id: "gm-team-performance", label: "Team Performance", icon: "users", sectionId: "team-performance", parentId: "gm-overview" },
-    { id: "gm-todos", label: "To Dos", icon: "check-circle", sectionId: "todos" },
+    { id: "gm-todos", label: "Work", icon: "briefcase", sectionId: "todos" },
     { id: "gm-meeting-prep", label: "Meeting Prep", icon: "columns", parentId: "gm-todos" },
     { id: "gm-lead-review", label: "Lead Review", icon: "search", parentId: "gm-todos" },
+    { id: "gm-overview", label: "Summary", icon: "grid" },
+    { id: "gm-business-metrics", label: "Business Metrics", icon: "bar-chart", sectionId: "business-metrics", parentId: "gm-overview" },
+    { id: "gm-team-performance", label: "Team Performance", icon: "users", sectionId: "team-performance", parentId: "gm-overview" },
   ],
   admin: [
     { id: "admin-dashboard", label: "Dashboard", icon: "grid" },
     { id: "admin-uploads", label: "Data Uploads", icon: "upload" },
     { id: "admin-org-mapping", label: "Org Mapping", icon: "users" },
-    { id: "admin-legend", label: "Legend", icon: "book" },
+    { id: "admin-legend", label: "Cancellation Reasons", icon: "book" },
   ],
 };
 
 // Hidden drill-down views (not shown in sidebar)
-export const drillDownViews = ["bm-lead-detail", "bm-task-detail", "gm-lead-detail"];
+export const drillDownViews = ["bm-lead-detail", "bm-task-detail", "gm-lead-detail", "gm-task-detail"];
 
 export const roleMeta = {
   bm: { label: "Branch View", shortLabel: "Branch", profileLabel: "Branch Manager" },

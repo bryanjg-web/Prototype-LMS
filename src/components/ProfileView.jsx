@@ -2,6 +2,7 @@ import { useState, useCallback, useEffect } from "react";
 import { motion } from "framer-motion";
 import { useAuth } from "../context/AuthContext";
 import { useApp } from "../context/AppContext";
+import BackButton from "./BackButton";
 import { roleMeta, roleDefaults } from "../config/navigation";
 import PhoneInput from "./PhoneInput";
 
@@ -58,12 +59,11 @@ export default function ProfileView() {
       transition={{ duration: 0.3, ease: [0.4, 0, 0.2, 1] }}
       className="max-w-xl"
     >
-      <button
+      <BackButton
         onClick={() => navigateTo(role ? roleDefaults[role] : "bm-dashboard")}
-        className="text-sm text-[var(--neutral-600)] hover:text-[var(--hertz-black)] mb-6 inline-block cursor-pointer"
-      >
-        ← Back
-      </button>
+        label="Back"
+        className="mb-6"
+      />
 
       <div className="space-y-6">
         {/* Header */}

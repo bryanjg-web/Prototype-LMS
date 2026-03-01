@@ -1,6 +1,6 @@
 import { useMemo } from "react";
 import { motion } from "framer-motion";
-import { getMeetingPrepOutstandingCount } from "../selectors/demoSelectors";
+import { getMeetingPrepOutstandingCount, getDateRangePresets, getNextComplianceMeetingDate } from "../selectors/demoSelectors";
 
 const cardAnim = (i, reduced = false) => ({
   initial: reduced ? false : { opacity: 0, y: 20 },
@@ -9,12 +9,20 @@ const cardAnim = (i, reduced = false) => ({
 });
 
 export default function MeetingPrepModule({ navigateTo, leads, dateRange, branch, reduceMotion }) {
+  // Use this_week for count to match Sidebar badge (meeting prep is always "this week's meeting")
+  const thisWeekRange = useMemo(() => {
+    const presets = getDateRangePresets();
+    const thisWeek = presets.find((p) => p.key === "this_week");
+    return thisWeek ? { start: thisWeek.start, end: thisWeek.end } : null;
+  }, []);
+
   const outstandingCount = useMemo(
-    () => getMeetingPrepOutstandingCount(leads ?? [], dateRange, branch),
-    [leads, dateRange, branch]
+    () => getMeetingPrepOutstandingCount(leads ?? [], thisWeekRange ?? dateRange, branch),
+    [leads, thisWeekRange, dateRange, branch]
   );
 
   const hasNotifications = outstandingCount >= 1;
+  const { dateStr, daysLeft } = getNextComplianceMeetingDate();
 
   return (
     <motion.div {...cardAnim(0, reduceMotion)}>
@@ -30,7 +38,7 @@ export default function MeetingPrepModule({ navigateTo, leads, dateRange, branch
           ${hasNotifications && !reduceMotion ? "animate-hertz-pulse" : ""}`}
       >
         <div className="flex items-center justify-between gap-4">
-          <div className="flex items-center gap-4 min-w-0">
+          <div className="flex items-center gap-4 min-w-0 flex-1">
             <div className="shrink-0 w-12 h-12 rounded-lg bg-[var(--hertz-primary)] flex items-center justify-center text-[var(--hertz-black)]">
               <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
@@ -51,6 +59,17 @@ export default function MeetingPrepModule({ navigateTo, leads, dateRange, branch
                   </>
                 ) : (
                   "All caught up. No leads need comments or data mismatch resolution before your meeting."
+                )}
+              </p>
+              <p className="text-xs font-medium text-[var(--hertz-black)] mt-2 flex items-center gap-1.5">
+                <svg className="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                </svg>
+                Weekly Compliance Meeting: {dateStr}
+                {daysLeft >= 0 && (
+                  <span className="font-semibold">
+                    — {daysLeft === 0 ? "today" : `${daysLeft} day${daysLeft !== 1 ? "s" : ""} left`}
+                  </span>
                 )}
               </p>
             </div>

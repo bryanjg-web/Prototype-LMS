@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { useApp } from "../../context/AppContext";
+import BackButton from "../BackButton";
 import { useAuth } from "../../context/AuthContext";
 import { useData } from "../../context/DataContext";
 import { getLeadById, getTasksForLead } from "../../selectors/demoSelectors";
@@ -9,7 +10,10 @@ import ContactButtons from "../ContactButtons";
 import InteractiveEnrichmentForm from "./InteractiveEnrichmentForm";
 
 export default function InteractiveLeadDetail() {
-  const { selectedLeadId, navigateTo, selectTask } = useApp();
+  const { selectedLeadId, navigateTo, selectTask, activeView, role } = useApp();
+  const isGMContext = activeView === "gm-lead-detail" || role === "gm";
+  const backView = isGMContext ? "gm-lead-review" : "bm-leads";
+  const backLabel = isGMContext ? "Back to Lead Review" : "Back to leads";
   const { userProfile } = useAuth();
   const { leads, fetchLeadActivities, fetchTasksForLead, refetchLeads, useSupabase, updateTaskStatus } = useData();
   const lead = getLeadById(leads, selectedLeadId);
@@ -55,24 +59,14 @@ export default function InteractiveLeadDetail() {
     return (
       <div className="h-full flex items-center justify-center text-[#6E6E6E]">
         No lead selected.
-        <button
-          onClick={() => navigateTo("bm-leads")}
-          className="ml-2 text-[var(--hertz-primary)] hover:underline cursor-pointer"
-        >
-          Back to leads
-        </button>
+        <BackButton onClick={() => navigateTo(backView)} label={backLabel} className="ml-2 mb-0" />
       </div>
     );
   }
 
   return (
     <div>
-      <button
-        onClick={() => navigateTo("bm-leads")}
-        className="text-sm text-[var(--neutral-600)] hover:text-[var(--hertz-black)] mb-4 inline-block cursor-pointer"
-      >
-        ← Back to leads
-      </button>
+      <BackButton onClick={() => navigateTo(backView)} label={backLabel} />
       <LeadDetail
         lead={lead}
         contactSlot={<LeadContactCard lead={lead} />}
@@ -108,9 +102,9 @@ export default function InteractiveLeadDetail() {
                   return (
                     <li
                       key={task.id}
-                      onClick={() => {
+                        onClick={() => {
                         selectTask?.(task.id);
-                        navigateTo("bm-task-detail");
+                        navigateTo(isGMContext ? "gm-task-detail" : "bm-task-detail");
                         window.dispatchEvent(new CustomEvent("onboarding:action", { detail: { actionType: "open_task" } }));
                       }}
                       className={`flex items-center gap-3 p-2 rounded border border-[var(--neutral-200)] hover:bg-[var(--neutral-50)] cursor-pointer transition-colors ${isDone ? "opacity-75" : ""}`}

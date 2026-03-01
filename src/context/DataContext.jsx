@@ -4,7 +4,7 @@
  * When false: uses mockData with localStorage persistence so enrichment survives logout/restart.
  */
 import { createContext, useContext, useState, useEffect, useCallback } from "react";
-import { leads as mockLeads } from "../data/mockData";
+import { leads as mockLeads, winsLearnings as mockWinsLearnings } from "../data/mockData";
 import {
   fetchLeads,
   fetchUploadSummary,
@@ -16,6 +16,9 @@ import {
   fetchTaskById as apiFetchTaskById,
   updateTaskStatus as apiUpdateTaskStatus,
   appendTaskNote as apiAppendTaskNote,
+  createComplianceTasksForBranch as apiCreateComplianceTasksForBranch,
+  fetchWinsLearnings as apiFetchWinsLearnings,
+  submitWinsLearning as apiSubmitWinsLearning,
 } from "../data/supabaseData";
 import { dataAsOfDate as mockDataAsOfDate } from "../data/mockData";
 
@@ -68,6 +71,7 @@ export function DataProvider({ children }) {
     const initial = stored ?? [...mockLeads];
     return ensureMismatchDemoLead(initial);
   });
+  const [winsLearnings, setWinsLearnings] = useState(USE_SUPABASE ? [] : [...mockWinsLearnings]);
   const [loading, setLoading] = useState(USE_SUPABASE);
   const [error, setError] = useState(null);
   const [dataAsOfDate, setDataAsOfDate] = useState(USE_SUPABASE ? null : mockDataAsOfDate);
@@ -104,6 +108,14 @@ export function DataProvider({ children }) {
   useEffect(() => {
     if (USE_SUPABASE) refetchLeads();
   }, [refetchLeads]);
+
+  // Fetch all wins & learnings on mount (Supabase mode). Selector filters by gmName client-side.
+  useEffect(() => {
+    if (!USE_SUPABASE) return;
+    apiFetchWinsLearnings()
+      .then((data) => setWinsLearnings(data ?? []))
+      .catch((err) => console.error("[DataContext] fetchWinsLearnings failed:", err));
+  }, []);
 
   const updateLeadEnrichment = useCallback(
     async (leadId, enrichment, enrichmentLogEntry, status = null) => {
@@ -206,6 +218,34 @@ export function DataProvider({ children }) {
     [USE_SUPABASE]
   );
 
+  const createComplianceTasksForBranch = useCallback(
+    async (params) => {
+      if (!USE_SUPABASE) return { created: 0, errors: [{ error: "Supabase required" }] };
+      return apiCreateComplianceTasksForBranch(params);
+    },
+    [USE_SUPABASE]
+  );
+
+  const submitWinsLearning = useCallback(
+    async ({ bmName, branch, gmName, content, weekOf }) => {
+      const entry = { bmName, branch, gmName, content, weekOf };
+      if (USE_SUPABASE) {
+        const created = await apiSubmitWinsLearning(entry);
+        setWinsLearnings((prev) => [created, ...prev]);
+        return created;
+      }
+      // Mock mode: optimistic local add — use demo NOW so date ordering is consistent
+      const mockEntry = {
+        ...entry,
+        id: `wl-mock-${Date.now()}`,
+        createdAt: new Date("2026-02-22T09:00:00").toISOString(),
+      };
+      setWinsLearnings((prev) => [mockEntry, ...prev]);
+      return mockEntry;
+    },
+    [USE_SUPABASE]
+  );
+
   const value = {
     leads,
     loading,
@@ -220,6 +260,9 @@ export function DataProvider({ children }) {
     fetchTaskById,
     updateTaskStatus,
     appendTaskNote,
+    createComplianceTasksForBranch,
+    winsLearnings,
+    submitWinsLearning,
     useSupabase: USE_SUPABASE,
   };
 

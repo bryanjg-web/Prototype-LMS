@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { AnimatePresence, motion } from "framer-motion";
+import BackButton from "./BackButton";
 
 export default function WalkthroughShell({ steps, title, onBack }) {
   const [currentStep, setCurrentStep] = useState(0);
@@ -27,9 +28,7 @@ export default function WalkthroughShell({ steps, title, onBack }) {
   return (
     <div className="h-full bg-white flex flex-col relative">
       <div className="px-8 py-4 flex items-center justify-between">
-        <button onClick={onBack} className="text-[#6E6E6E] hover:text-[#1A1A1A] text-sm cursor-pointer">
-          ← Back to Interactive Demo
-        </button>
+        <BackButton onClick={onBack} label="Back to Interactive Demo" className="mb-0" />
         <span className="text-[#6E6E6E] text-sm">{title}</span>
       </div>
 
