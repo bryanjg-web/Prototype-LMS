@@ -13,6 +13,7 @@ import {
   getBMLeaderboardData,
 } from "../../selectors/demoSelectors";
 import { DateRangeCalendar } from "../DateRangeCalendar";
+import { formatDateRange as formatDateRangePST } from "../../utils/dateTime";
 
 const easeOut = [0.4, 0, 0.2, 1];
 
@@ -25,10 +26,10 @@ const METRICS = [
 
 function formatDateRange(preset, customStart, customEnd) {
   if (preset?.key === "custom" && customStart && customEnd) {
-    return `${new Date(customStart).toLocaleDateString("en-AU", { month: "short", day: "numeric" })} – ${new Date(customEnd).toLocaleDateString("en-AU", { month: "short", day: "numeric" })}`;
+    return formatDateRangePST(new Date(customStart), new Date(customEnd));
   }
   if (preset?.start && preset?.end) {
-    return `${preset.start.toLocaleDateString("en-AU", { month: "short", day: "numeric" })} – ${preset.end.toLocaleDateString("en-AU", { month: "short", day: "numeric" })}`;
+    return formatDateRangePST(preset.start, preset.end);
   }
   return preset?.label ?? "";
 }
@@ -93,7 +94,7 @@ function BarRow({ row, metricKey, maxVal, isCurrentBranch, regionBenchmark, metr
 export default function InteractiveBMLeaderboard() {
   const { userProfile } = useAuth();
   const { leads } = useData();
-  const branch = userProfile?.branch ?? getDefaultBranchForDemo();
+  const branch = (userProfile?.branch?.trim() || getDefaultBranchForDemo());
   const reduceMotion = useReducedMotion();
 
   const presets = getDateRangePresets();

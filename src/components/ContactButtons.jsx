@@ -5,18 +5,28 @@
 import { useState, useEffect } from "react";
 import { supabase } from "../lib/supabase";
 import EmailComposeModal from "./EmailComposeModal";
+import SmsComposeModal from "./SmsComposeModal";
+import { parsePhoneE164, formatLocalDisplay } from "./PhoneInput";
+
+function fmtPhone(phone) {
+  if (!phone) return "";
+  const { countryCode, local } = parsePhoneE164(phone);
+  return `${countryCode} ${formatLocalDisplay(countryCode, local)}`;
+}
 
 export default function ContactButtons({ lead, agentPhone, userProfile, onContactSuccess }) {
   const [loading, setLoading] = useState(null); // "email" | "sms" | "call"
-  const [message, setMessage] = useState(null); // { type: "success" | "error", text }
+  const [message, setMessage] = useState(null); // { type: "success" | "error", text, channel? }
   const [showCompose, setShowCompose] = useState(false);
+  const [showSmsCompose, setShowSmsCompose] = useState(false);
 
   const hasEmail = lead?.email && lead.email.includes("@");
   const hasPhone = lead?.phone && lead.phone.length >= 10;
 
   useEffect(() => {
     if (!message) return;
-    const t = setTimeout(() => setMessage(null), 3000);
+    const delay = message.channel === "call" ? 10000 : 4000;
+    const t = setTimeout(() => setMessage(null), delay);
     return () => clearTimeout(t);
   }, [message]);
 
@@ -68,10 +78,8 @@ export default function ContactButtons({ lead, agentPhone, userProfile, onContac
       if (data?.success) {
         if (data.activityError) {
           console.error("[ContactButtons] Email sent but activity log failed:", data.activityError);
-          setMessage({ type: "success", text: `Email sent (activity log error: ${data.activityError})` });
-        } else {
-          setMessage({ type: "success", text: "Email sent" });
         }
+        setMessage({ type: "success", text: `Email delivered to ${lead.email}` });
         onContactSuccess?.();
       } else {
         setMessage({ type: "error", text: data?.error ?? "Failed to send" });
@@ -83,8 +91,13 @@ export default function ContactButtons({ lead, agentPhone, userProfile, onContac
     }
   };
 
-  const handleSms = async () => {
+  const handleSms = () => {
     if (!hasPhone) return;
+    setShowSmsCompose(true);
+  };
+
+  const handleSmsSend = async ({ body: bodyText }) => {
+    setShowSmsCompose(false);
     setLoading("sms");
     setMessage(null);
     try {
@@ -92,6 +105,7 @@ export default function ContactButtons({ lead, agentPhone, userProfile, onContac
         body: {
           leadId: lead.id,
           to: lead.phone,
+          body: bodyText,
           customer: lead.customer,
           reservationId: lead.reservationId ?? "",
           branch: lead.branch ?? "",
@@ -107,10 +121,8 @@ export default function ContactButtons({ lead, agentPhone, userProfile, onContac
       if (data?.success) {
         if (data.activityError) {
           console.error("[ContactButtons] SMS sent but activity log failed:", data.activityError);
-          setMessage({ type: "success", text: `SMS sent (activity log error: ${data.activityError})` });
-        } else {
-          setMessage({ type: "success", text: "SMS sent" });
         }
+        setMessage({ type: "success", text: `SMS sent to ${fmtPhone(lead.phone)}` });
         onContactSuccess?.();
       } else {
         setMessage({ type: "error", text: data?.error ?? "Failed to send" });
@@ -149,10 +161,13 @@ export default function ContactButtons({ lead, agentPhone, userProfile, onContac
       if (data?.success) {
         if (data.activityError) {
           console.error("[ContactButtons] Call initiated but activity log failed:", data.activityError);
-          setMessage({ type: "success", text: `Calling you now (activity log error: ${data.activityError})` });
-        } else {
-          setMessage({ type: "success", text: "Calling you now" });
         }
+        const fromLabel = data.from ? fmtPhone(data.from) : "the Hertz number";
+        setMessage({
+          type: "success",
+          text: `Incoming call from ${fromLabel} to ${fmtPhone(agentPhone)} — answer to connect`,
+          channel: "call",
+        });
         onContactSuccess?.();
       } else {
         setMessage({ type: "error", text: data?.error ?? "Failed to initiate call" });
@@ -164,13 +179,36 @@ export default function ContactButtons({ lead, agentPhone, userProfile, onContac
     }
   };
 
+  const missingParts = [];
+  if (!hasEmail) missingParts.push("email");
+  if (!hasPhone) missingParts.push("phone");
+
   return (
     <div>
+      {missingParts.length > 0 && (
+        <div className="flex items-start gap-2.5 px-3.5 py-2.5 mb-3 bg-[var(--color-warning-light)] border border-[var(--color-warning)]/40 rounded-lg">
+          <svg className="w-4 h-4 text-[var(--color-warning)] shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+          <p className="text-sm text-[var(--hertz-black)]">
+            <span className="font-medium">Missing {missingParts.join(" & ")}</span>
+            {" — update contact details to enable "}
+            {!hasEmail && !hasPhone ? "email, SMS, and calls" : !hasEmail ? "email" : "SMS and calls"}.
+          </p>
+        </div>
+      )}
       {showCompose && (
         <EmailComposeModal
           lead={lead}
           onSend={handleEmailSend}
           onCancel={() => setShowCompose(false)}
+        />
+      )}
+      {showSmsCompose && (
+        <SmsComposeModal
+          lead={lead}
+          onSend={handleSmsSend}
+          onCancel={() => setShowSmsCompose(false)}
         />
       )}
       <div className="flex flex-wrap items-center gap-2">
@@ -183,7 +221,7 @@ export default function ContactButtons({ lead, agentPhone, userProfile, onContac
               ? "bg-[var(--hertz-primary)] border-[var(--hertz-primary)] text-[var(--hertz-black)] hover:bg-[var(--hertz-primary-hover)] hover:border-[var(--hertz-primary-hover)]"
               : "bg-white border-[var(--neutral-200)] text-[var(--hertz-black)] hover:bg-[var(--neutral-50)] hover:border-[var(--neutral-300)] disabled:hover:bg-white disabled:hover:border-[var(--neutral-200)]"
           }`}
-          title={hasEmail ? "Send email" : "Add email above first"}
+          title={hasEmail ? `Send email to ${lead.email}` : "Add email above first"}
         >
           <svg className="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
@@ -199,7 +237,7 @@ export default function ContactButtons({ lead, agentPhone, userProfile, onContac
               ? "bg-[var(--hertz-primary)] border-[var(--hertz-primary)] text-[var(--hertz-black)] hover:bg-[var(--hertz-primary-hover)] hover:border-[var(--hertz-primary-hover)]"
               : "bg-white border-[var(--neutral-200)] text-[var(--hertz-black)] hover:bg-[var(--neutral-50)] hover:border-[var(--neutral-300)] disabled:hover:bg-white disabled:hover:border-[var(--neutral-200)]"
           }`}
-          title={hasPhone ? "Send SMS" : "Add phone above first"}
+          title={hasPhone ? `Send SMS to ${fmtPhone(lead.phone)}` : "Add phone above first"}
         >
           <svg className="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
@@ -215,7 +253,7 @@ export default function ContactButtons({ lead, agentPhone, userProfile, onContac
               ? "bg-[var(--hertz-primary)] border-[var(--hertz-primary)] text-[var(--hertz-black)] hover:bg-[var(--hertz-primary-hover)] hover:border-[var(--hertz-primary-hover)]"
               : "bg-white border-[var(--neutral-200)] text-[var(--hertz-black)] hover:bg-[var(--neutral-50)] hover:border-[var(--neutral-300)] disabled:hover:bg-white disabled:hover:border-[var(--neutral-200)]"
           }`}
-          title={hasPhone ? "Click to call" : "Add phone above first"}
+          title={hasPhone ? `We'll call you at ${fmtPhone(agentPhone)}, then connect you to the customer` : "Add phone above first"}
         >
           <svg className="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
@@ -224,16 +262,30 @@ export default function ContactButtons({ lead, agentPhone, userProfile, onContac
         </button>
         {loading && (
           <span className="text-sm text-[var(--neutral-600)]">
-            {loading === "call" ? "Connecting…" : "Sending…"}
+            {loading === "call"
+              ? `Dialing ${fmtPhone(agentPhone)}…`
+              : loading === "email"
+                ? `Sending email to ${lead.email}…`
+                : `Sending SMS to ${fmtPhone(lead.phone)}…`}
           </span>
         )}
         {message && (
           <span
-            className={`text-sm font-medium ${
+            className={`text-sm font-medium inline-flex items-center gap-1.5 ${
               message.type === "success" ? "text-[var(--color-success)]" : "text-[var(--color-error)]"
             }`}
           >
             {message.text}
+            <button
+              type="button"
+              onClick={() => setMessage(null)}
+              className="p-0.5 rounded hover:bg-[var(--neutral-100)] transition-colors"
+              aria-label="Dismiss"
+            >
+              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
           </span>
         )}
       </div>

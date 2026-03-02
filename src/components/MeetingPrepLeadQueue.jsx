@@ -4,6 +4,7 @@
  */
 import { motion } from "framer-motion";
 import StatusBadge from "./StatusBadge";
+import { formatDateOnly } from "../utils/dateTime";
 
 export default function MeetingPrepLeadQueue({
   leads,
@@ -31,7 +32,7 @@ export default function MeetingPrepLeadQueue({
             const contactSource = lead.firstContactBy === "branch" ? "Branch" : lead.firstContactBy === "hrd" ? "HRD" : "—";
             const leadReceived = lead.initDtFinal ?? lead.init_dt_final ?? "—";
             const leadReceivedFormatted = typeof leadReceived === "string" && leadReceived !== "—"
-              ? new Date(leadReceived + "T00:00:00").toLocaleDateString("en-AU", { month: "short", day: "numeric", year: "numeric" })
+              ? formatDateOnly(leadReceived)
               : leadReceived;
             return (
               <motion.tr

@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { motion } from "framer-motion";
-import { leaderboardData, branchManagers } from "../../data/mockData";
+import { useData } from "../../context/DataContext";
 
 const filters = [
   { key: "branches", label: "Branches" },
@@ -75,6 +75,7 @@ function getSecondaryLabel(filter) {
 }
 
 export default function InteractiveLeaderboard() {
+  const { leaderboardData, branchManagers } = useData();
   const [activeFilter, setActiveFilter] = useState("branches");
   const [sortByImproved, setSortByImproved] = useState(false);
 

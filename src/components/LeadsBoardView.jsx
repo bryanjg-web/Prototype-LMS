@@ -13,6 +13,7 @@ import {
 import { CSS } from "@dnd-kit/utilities";
 import StatusBadge from "./StatusBadge";
 import StatusChangeModal, { statusChangeNeedsModal } from "./StatusChangeModal";
+import { formatDateTimeShort } from "../utils/dateTime";
 
 const COLUMNS = [
   { key: "Rented", label: "Rented", color: "border-[#2E7D32]", headerBg: "bg-[#2E7D32]/10", countColor: "text-[#2E7D32]" },
@@ -21,9 +22,7 @@ const COLUMNS = [
 ];
 
 function formatNow() {
-  const d = new Date();
-  return d.toLocaleDateString("en-US", { month: "short", day: "numeric" }) +
-    ", " + d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
+  return formatDateTimeShort(new Date());
 }
 
 function LeadCard({ lead, org, onLeadClick, isDragging, dataOnboarding }) {

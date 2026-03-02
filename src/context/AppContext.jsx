@@ -33,6 +33,7 @@ function reducer(state, action) {
     }
     case "SET_ROLE": {
       const role = action.payload;
+      if (role === state.role) return state;
       return {
         ...state,
         role,

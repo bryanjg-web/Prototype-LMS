@@ -6,18 +6,32 @@
 :root {
   /* ===========================
      PRIMARY BRAND COLORS
+     (2024 Hertz Sustainability Report / PANTONE 7406 C)
      =========================== */
-  --hertz-primary: #FFD100;
-  --hertz-primary-hover: #E6BC00;
+  --hertz-primary: #F4C300;
+  --hertz-primary-hover: #E6B000;
   --hertz-primary-active: #CC9F00;
-  --hertz-primary-light: #FFE566;
-  --hertz-primary-subtle: rgba(255, 209, 0, 0.1);
-  --hertz-primary-focus: rgba(255, 209, 0, 0.2);
-  --hertz-black: #272425;
-  --hertz-black-hover: #1A1A1A;
+  --hertz-primary-light: #F7D94D;
+  --hertz-primary-subtle: rgba(244, 195, 0, 0.1);
+  --hertz-primary-focus: rgba(244, 195, 0, 0.2);
+  --hertz-black: #141618;
+  --hertz-black-hover: #0A0B0C;
   --hertz-white: #FFFFFF;
-  --hertz-gold-plus: #C9A94E;
-  --hertz-gold-plus-light: #D4B968;
+  --hertz-gold-plus: #FEA529;
+  --hertz-gold-plus-light: #FFD066;
+
+  /* ===========================
+     CHART PALETTE (harmonious with Hertz gold)
+     One gold only; muted tones that complement rather than clash
+     =========================== */
+  --chart-primary: #F4C300;
+  --chart-black: #141618;
+  --chart-success: #2E7D32;
+  --chart-info: #5C6B7A;
+  --chart-accent: #7A6B5E;
+  --chart-secondary: #5C7C6B;
+  --chart-neutral: #808080;
+  --chart-neutral-dark: #4D4D4D;
 
   /* ===========================
      NEUTRALS
@@ -34,16 +48,16 @@
   --neutral-900: #1A1A1A;
 
   /* ===========================
-     SEMANTIC COLORS
+     SEMANTIC COLORS (aligned with 2024 report palette)
      =========================== */
   --color-success: #2E7D32;
   --color-success-light: #E8F5E9;
   --color-error: #C62828;
   --color-error-light: #FFEBEE;
-  --color-warning: #F57F17;
-  --color-warning-light: #FFF8E1;
-  --color-info: #1565C0;
-  --color-info-light: #E3F2FD;
+  --color-warning: #B8860B;
+  --color-warning-light: #FFF8E6;
+  --color-info: #5C6B7A;
+  --color-info-light: #E8EBEE;
 
   /* ===========================
      TYPOGRAPHY
@@ -113,12 +127,12 @@
   --radius-full: 9999px;
 
   /* ===========================
-     SHADOWS (warm black base)
+     SHADOWS (Hertz black #141618 base)
      =========================== */
-  --shadow-sm: 0 1px 2px rgba(39, 36, 37, 0.06);
-  --shadow-md: 0 2px 8px rgba(39, 36, 37, 0.08);
-  --shadow-lg: 0 4px 16px rgba(39, 36, 37, 0.10);
-  --shadow-xl: 0 8px 32px rgba(39, 36, 37, 0.12);
+  --shadow-sm: 0 1px 2px rgba(20, 22, 24, 0.06);
+  --shadow-md: 0 2px 8px rgba(20, 22, 24, 0.08);
+  --shadow-lg: 0 4px 16px rgba(20, 22, 24, 0.10);
+  --shadow-xl: 0 8px 32px rgba(20, 22, 24, 0.12);
 
   /* ===========================
      TRANSITIONS
@@ -162,4 +176,22 @@
   :root {
     --nav-height: 56px;
   }
+}
+
+/* Pulse for alert/error elements in admin upload view */
+@keyframes alert-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(230, 81, 0, 0.4); }
+  50% { box-shadow: 0 0 0 4px rgba(230, 81, 0, 0.15); }
+}
+@keyframes alert-pulse-red {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(198, 40, 40, 0.4); }
+  50% { box-shadow: 0 0 0 4px rgba(198, 40, 40, 0.15); }
+}
+.alert-pulse {
+  animation: alert-pulse 1.5s ease-in-out infinite;
+  border: 2px solid #E65100;
+}
+.alert-pulse-red {
+  animation: alert-pulse-red 1.5s ease-in-out infinite;
+  border: 2px solid #C62828;
 }

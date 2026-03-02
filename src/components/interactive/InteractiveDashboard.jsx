@@ -21,6 +21,7 @@ import {
   getAverageTimeToContactMinutes,
   tasksInDateRange,
   getGMDashboardStats,
+  resolveGMName,
   relChange,
 } from "../../selectors/demoSelectors";
 import { roleMeta, roleUsers, roleDefaults } from "../../config/navigation";
@@ -32,11 +33,15 @@ import MeetingPrepModule from "../MeetingPrepModule";
 import LeaderboardModule from "../LeaderboardModule";
 import GMLeaderboardModule from "../GMLeaderboardModule";
 import GMMeetingPrepModule from "../GMMeetingPrepModule";
-import GMLeadReviewModule from "../GMLeadReviewModule";
+import GMSpotCheckModule from "../GMSpotCheckModule";
+import ActivityReportModule from "../ActivityReportModule";
 import { DateRangeCalendar } from "../DateRangeCalendar";
 import MetricDrilldownModal from "../MetricDrilldownModal";
+import GMMetricDrilldownModal from "../GMMetricDrilldownModal";
 import SummaryExportModal from "../SummaryExportModal";
 import { exportLeadsToCSV, exportTasksToCSV } from "../../utils/exportUtils";
+import { formatDateRange as formatDateRangePST, formatDateOnly } from "../../utils/dateTime";
+import CreateTaskModal from "../CreateTaskModal";
 
 const easeOut = [0.4, 0, 0.2, 1];
 const cardAnim = (i, reduced = false) => ({
@@ -44,6 +49,21 @@ const cardAnim = (i, reduced = false) => ({
   animate: { opacity: 1, y: 0 },
   transition: { delay: reduced ? 0 : i * 0.06, duration: reduced ? 0.01 : 0.4, ease: easeOut },
 });
+
+// Keeps overlay (line) data labels from colliding with bar-top labels.
+const LABEL_BUFFER_PX = 14; // rough height of the label text
+const MIN_LABEL_GAP_PX = 10; // minimum vertical gap we want between labels
+function computeOverlayLabelOffsets({ overlayPercents, barPercents, chartHeightPx, minGapPx = MIN_LABEL_GAP_PX, bufferPx = LABEL_BUFFER_PX }) {
+  if (!overlayPercents?.length || !barPercents?.length) return [];
+  return overlayPercents.map((ov, idx) => {
+    const bar = barPercents[idx];
+    if (ov == null || bar == null) return 0;
+    const overlayPosPx = (ov / 100) * chartHeightPx + bufferPx;
+    const barPosPx = (bar / 100) * chartHeightPx + bufferPx;
+    const gap = Math.abs(overlayPosPx - barPosPx);
+    return gap < minGapPx ? Math.ceil(minGapPx - gap) : 0;
+  });
+}
 
 function SectionHeader({ title, subtitle, action }) {
   return (
@@ -79,39 +99,19 @@ function getTimeOfDayGreeting() {
   return "Good evening";
 }
 
-function getContextualInsight({ stats, comparisonStats, openTasksCount, convRate, prevConvRate }) {
-  if (openTasksCount === 0) return "All tasks completed — nice work.";
-  if (stats.total > 0 && comparisonStats.total > 0) {
-    const change = stats.total - comparisonStats.total;
-    if (change > 0) return `${change} new lead${change !== 1 ? "s" : ""} since last period.`;
-  }
-  if (convRate > prevConvRate && prevConvRate > 0) {
-    return `Conversion rate is up ${convRate - prevConvRate}pp — keep it going.`;
-  }
-  if (openTasksCount > 0 && openTasksCount <= 3) {
-    return `Just ${openTasksCount} task${openTasksCount !== 1 ? "s" : ""} left today.`;
-  }
-  return null;
-}
-
 function formatDateRange(preset, customStart, customEnd) {
   if (preset?.key === "custom" && customStart && customEnd) {
-    return `${new Date(customStart).toLocaleDateString("en-AU", { month: "short", day: "numeric" })} – ${new Date(customEnd).toLocaleDateString("en-AU", { month: "short", day: "numeric" })}`;
+    return formatDateRangePST(new Date(customStart), new Date(customEnd));
   }
   if (preset?.start && preset?.end) {
-    return `${preset.start.toLocaleDateString("en-AU", { month: "short", day: "numeric" })} – ${preset.end.toLocaleDateString("en-AU", { month: "short", day: "numeric" })}`;
+    return formatDateRangePST(preset.start, preset.end);
   }
   return preset?.label ?? "";
 }
 
 function formatDateDisplay(isoStr) {
   if (!isoStr) return "—";
-  const d = new Date(isoStr + "T00:00:00");
-  if (isNaN(d.getTime())) return isoStr;
-  const mo = d.toLocaleString("en-US", { month: "short" });
-  const day = d.getDate();
-  const yr = d.getFullYear();
-  return `${mo} ${day}, ${yr}`;
+  return formatDateOnly(isoStr);
 }
 
 function leadToHlesRow(lead, org) {
@@ -142,10 +142,9 @@ function leadToHlesRow(lead, org) {
 
 function BMDashboard({ navigateTo, selectLead, selectTask }) {
   const { userProfile } = useAuth();
-  const { leads, fetchTasksForBranch, useSupabase, updateLeadEnrichment, updateTaskStatus } = useData();
+  const { leads, fetchTasksForBranch, useSupabase, updateLeadEnrichment, updateTaskStatus, insertTask } = useData();
   const reduceMotion = useReducedMotion();
-  const branch = userProfile?.branch ?? getDefaultBranchForDemo();
-  const displayName = userProfile?.displayName ?? roleUsers.bm?.name ?? "there";
+  const branch = (userProfile?.branch?.trim() || getDefaultBranchForDemo());
 
   const [branchTasks, setBranchTasks] = useState(() =>
     useSupabase ? [] : getTasksForBranch(branch)
@@ -197,6 +196,11 @@ function BMDashboard({ navigateTo, selectLead, selectTask }) {
   const [chartOverlayTooltip, setChartOverlayTooltip] = useState(null);
   const [chartBarTooltip, setChartBarTooltip] = useState(null);
 
+  const [leadsSearchQuery, setLeadsSearchQuery] = useState("");
+  const [leadsSortField, setLeadsSortField] = useState(null);
+  const [leadsSortDir, setLeadsSortDir] = useState("asc");
+  const [showCreateTask, setShowCreateTask] = useState(false);
+
   useEffect(() => {
     if (summaryTrendsChartType === "line" && (trendsOverlayMetric || trendsGroupBy !== "period")) {
       setSummaryTrendsChartType("bar");
@@ -231,12 +235,12 @@ function BMDashboard({ navigateTo, selectLead, selectTask }) {
   const isStackedView = trendsGroupBy !== "period";
 
   const summaryTrendsMetricConfig = {
-    leadPipeline: { key: "totalLeads", label: "Total Leads", color: "#272425", suffix: "" },
-    conversionRate: { key: "conversionRate", label: "Conversion Rate", color: "#2E7D32", suffix: "%" },
-    commentRate: { key: "commentRate", label: "Comment Rate", color: "#FFD100", suffix: "%" },
-    openTasks: { key: "openTasks", label: "Open Tasks", color: "#1565C0", suffix: "" },
-    taskCompletion: { key: "taskCompletionRate", label: "Task Completion Rate", color: "#6A1B9A", suffix: "%" },
-    avgTimeToContact: { key: "avgTimeToContact", label: "Avg. Time to First Contact", color: "#E65100", suffix: "m" },
+    leadPipeline: { key: "totalLeads", label: "Total Leads", color: "var(--chart-black)", suffix: "" },
+    conversionRate: { key: "conversionRate", label: "Conversion Rate", color: "var(--chart-success)", suffix: "%" },
+    commentRate: { key: "commentRate", label: "Comment Rate", color: "var(--chart-primary)", suffix: "%" },
+    openTasks: { key: "openTasks", label: "Open Tasks", color: "var(--chart-info)", suffix: "" },
+    taskCompletion: { key: "taskCompletionRate", label: "Task Completion Rate", color: "var(--chart-secondary)", suffix: "%" },
+    avgTimeToContact: { key: "avgTimeToContact", label: "Avg. Time to First Contact", color: "var(--chart-accent)", suffix: "m" },
   };
 
   /** Stacked view only supports lead/count metrics; task/time metrics need period-level aggregation. */
@@ -280,6 +284,14 @@ function BMDashboard({ navigateTo, selectLead, selectTask }) {
 
   const filteredBranchLeads = useMemo(() => {
     let result = branchLeads;
+    if (leadsSearchQuery.trim()) {
+      const q = leadsSearchQuery.trim().toLowerCase();
+      result = result.filter((l) =>
+        (l.customer ?? "").toLowerCase().includes(q) ||
+        (l.reservationId ?? "").toLowerCase().includes(q) ||
+        (l.confirmNum ?? l.reservationId ?? "").toLowerCase().includes(q)
+      );
+    }
     if (leadsStatusFilter !== "All") result = result.filter((l) => l.status === leadsStatusFilter);
     if (leadsInsuranceFilter !== "All") result = result.filter((l) => (l.insuranceCompany ?? "—") === leadsInsuranceFilter);
     if (leadsCancelReasonFilter !== "All") result = result.filter((l) => (l.hlesReason ?? "—") === leadsCancelReasonFilter);
@@ -291,20 +303,26 @@ function BMDashboard({ navigateTo, selectLead, selectTask }) {
       const max = parts[1] ? (parts[1] === "" ? null : Number(parts[1])) : min;
       result = result.filter((l) => {
         const d = l.daysOpen ?? 0;
-        if (max === null) return d >= min; // e.g. "11-" means 11+
+        if (max === null) return d >= min;
         return d >= min && d <= max;
       });
     }
-    // Rented + enrichment complete go to bottom; otherwise sort by daysOpen desc
     result = [...result].sort((a, b) => {
       const aClosed = a.status === "Rented" && a.enrichmentComplete;
       const bClosed = b.status === "Rented" && b.enrichmentComplete;
       if (aClosed && !bClosed) return 1;
       if (!aClosed && bClosed) return -1;
+      if (leadsSortField) {
+        const dir = leadsSortDir === "asc" ? 1 : -1;
+        const av = a[leadsSortField] ?? "";
+        const bv = b[leadsSortField] ?? "";
+        if (typeof av === "number" && typeof bv === "number") return (av - bv) * dir;
+        return String(av).localeCompare(String(bv)) * dir;
+      }
       return (b.daysOpen ?? 0) - (a.daysOpen ?? 0);
     });
     return result;
-  }, [branchLeads, leadsStatusFilter, leadsInsuranceFilter, leadsCancelReasonFilter, leadsDaysOpenFilter, leadsTimeToContactFilter, leadsFirstContactByFilter]);
+  }, [branchLeads, leadsSearchQuery, leadsStatusFilter, leadsInsuranceFilter, leadsCancelReasonFilter, leadsDaysOpenFilter, leadsTimeToContactFilter, leadsFirstContactByFilter, leadsSortField, leadsSortDir]);
 
   const tasksFilterOptions = useMemo(() => {
     const statuses = [...new Set(branchTasks.map((t) => t.status))].sort();
@@ -412,8 +430,31 @@ function BMDashboard({ navigateTo, selectLead, selectTask }) {
   const activePreset = useCustom ? { key: "custom" } : presets.find((p) => p.key === selectedPresetKey);
   const rangeLabel = formatDateRange(activePreset, customStart, customEnd);
 
-  const greeting = getTimeOfDayGreeting();
-  const insight = getContextualInsight({ stats, comparisonStats, openTasksCount, convRate, prevConvRate });
+  const handleSortClick = (field) => {
+    if (leadsSortField === field) {
+      setLeadsSortDir((d) => (d === "asc" ? "desc" : "asc"));
+    } else {
+      setLeadsSortField(field);
+      setLeadsSortDir("asc");
+    }
+  };
+
+  const SortIcon = ({ field }) => {
+    if (leadsSortField !== field) return <span className="text-white/30 ml-1">↕</span>;
+    return <span className="text-[var(--hertz-primary)] ml-1">{leadsSortDir === "asc" ? "↑" : "↓"}</span>;
+  };
+
+  const handleCreateTask = async (taskData) => {
+    const created = await insertTask(taskData);
+    if (created) {
+      if (useSupabase) {
+        fetchTasksForBranch(branch).then(setBranchTasks).catch(() => {});
+      } else {
+        setBranchTasks((prev) => [created, ...prev]);
+      }
+    }
+    setShowCreateTask(false);
+  };
 
   const trendsConfig = summaryTrendsMetricConfig[effectiveTrendsMetric];
   const trendsValues = isStackedView ? [] : trendsChartData.map((d) => d[trendsConfig.key] ?? 0);
@@ -427,12 +468,12 @@ function BMDashboard({ navigateTo, selectLead, selectTask }) {
   const overlayMax = overlayValues.length > 0 ? Math.max(...overlayValues, 1) : 1;
 
   const SEGMENT_COLORS = {
-    Rented: "var(--hertz-primary)",
-    Cancelled: "var(--hertz-black)",
-    Unused: "var(--neutral-600)",
+    Rented: "var(--chart-primary)",
+    Cancelled: "var(--chart-black)",
+    Unused: "var(--chart-neutral)",
   };
   const SEGMENT_ORDER = ["Rented", "Cancelled", "Unused"];
-  const PALETTE = ["#272425", "#2E7D32", "#1565C0", "#6A1B9A", "#E65100", "#FFD100", "#78909C", "#4DB6AC"];
+  const PALETTE = ["var(--chart-primary)", "var(--hertz-primary-light)", "var(--hertz-gold-plus)", "var(--chart-black)", "var(--chart-info)", "var(--chart-accent)", "var(--chart-neutral)", "var(--chart-neutral-dark)"];
   const getSegmentColor = (key) => SEGMENT_COLORS[key] ?? PALETTE[Math.abs(key.split("").reduce((a, c) => a + c.charCodeAt(0), 0)) % PALETTE.length];
 
   const stackedSegmentKeys = useMemo(() => {
@@ -483,6 +524,20 @@ function BMDashboard({ navigateTo, selectLead, selectTask }) {
       const niceMax = isCountMetric ? (stackedMaxTotal <= 4 ? 4 : stackedMaxTotal <= 8 ? 8 : stackedMaxTotal <= 12 ? 12 : Math.ceil(stackedMaxTotal / 5) * 5) : 100;
       const yTickCount = 5;
       const yTicks = Array.from({ length: yTickCount }, (_, i) => Math.round((niceMax * i) / (yTickCount - 1)));
+      const STACKED_CHART_HEIGHT = 260;
+      const STACKED_OVERLAY_INSET = 6;
+      const stackedPlotHeightPx = STACKED_CHART_HEIGHT - STACKED_OVERLAY_INSET * 2;
+      const stackedBarTopPercents = trendsChartData.map((row) =>
+        isCountMetric ? (row.total / niceMax) * 100 : Object.values(row.segments ?? {}).reduce((s, v) => s + v, 0)
+      );
+      const stackedOverlayPercents = stackedHasOverlay ? overlayValues.map((v) => (overlayMax > 0 ? (v / overlayMax) * 100 : 0)) : [];
+      const stackedOverlayLabelOffsets = stackedHasOverlay
+        ? computeOverlayLabelOffsets({
+            overlayPercents: stackedOverlayPercents,
+            barPercents: stackedBarTopPercents,
+            chartHeightPx: stackedPlotHeightPx,
+          })
+        : [];
 
       const AXIS_GAP = 12;
       return (
@@ -562,7 +617,7 @@ function BMDashboard({ navigateTo, selectLead, selectTask }) {
               </div>
               {/* Overlay line — inset wrapper with HTML dots + SVG polyline + data labels */}
               {stackedHasOverlay && (() => {
-                const OVERLAY_INSET = 6;
+                const OVERLAY_INSET = STACKED_OVERLAY_INSET;
                 const bottomPct = (v) => overlayMax > 0 ? (v / overlayMax) * 100 : 0;
                 return (
                 <div className="absolute z-20 pointer-events-none" style={{ top: OVERLAY_INSET, bottom: OVERLAY_INSET, left: AXIS_GAP, right: stackedPadR + AXIS_GAP }}>
@@ -599,7 +654,10 @@ function BMDashboard({ navigateTo, selectLead, selectTask }) {
                         onMouseLeave={() => setChartOverlayTooltip(null)}
                       >
                         <div className="w-2.5 h-2.5 rounded-full bg-[var(--color-success)] border-2 border-white shadow-sm relative">
-                          <span className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1 text-xs font-bold text-[var(--color-success)] whitespace-nowrap pointer-events-none">
+                          <span
+                            className="absolute bottom-full left-1/2 -translate-x-1/2 text-xs font-bold text-[var(--color-success)] whitespace-nowrap pointer-events-none"
+                            style={{ marginBottom: `${4 + (stackedOverlayLabelOffsets[i] ?? 0)}px` }}
+                          >
                             {v}{overlayConfig?.suffix ?? ""}
                           </span>
                         </div>
@@ -677,6 +735,17 @@ function BMDashboard({ navigateTo, selectLead, selectTask }) {
     const padR = hasOverlay ? 40 : 0;
     const overlayTickValues = [0, 0.25, 0.5, 0.75, 1].map((f) => Math.round(overlayMax * f));
     const nonStackedAxisGap = 12;
+    const NONSTACKED_OVERLAY_INSET = 6;
+    const nonStackedPlotHeightPx = chartHeight - NONSTACKED_OVERLAY_INSET * 2;
+    const nonStackedBarTopPercents = trendsValues.map((v) => (trendsMax > 0 ? Math.min(100, (v / trendsMax) * 100) : 0));
+    const nonStackedOverlayPercents = hasOverlay ? overlayValues.map((v) => (overlayMax > 0 ? (v / overlayMax) * 100 : 0)) : [];
+    const nonStackedOverlayLabelOffsets = hasOverlay
+      ? computeOverlayLabelOffsets({
+          overlayPercents: nonStackedOverlayPercents,
+          barPercents: nonStackedBarTopPercents,
+          chartHeightPx: nonStackedPlotHeightPx,
+        })
+      : [];
     return (
       <div>
         <div className="flex" style={{ height: chartHeight, gap: nonStackedAxisGap }}>
@@ -730,7 +799,7 @@ function BMDashboard({ navigateTo, selectLead, selectTask }) {
             </div>
             {/* Overlay line — inset wrapper with HTML dots + SVG polyline + data labels */}
             {hasOverlay && (() => {
-              const OVERLAY_INSET = 6;
+              const OVERLAY_INSET = NONSTACKED_OVERLAY_INSET;
               const bottomPct = (v) => overlayMax > 0 ? (v / overlayMax) * 100 : 0;
               return (
               <div className="absolute z-20 pointer-events-none" style={{ top: OVERLAY_INSET, bottom: OVERLAY_INSET, left: nonStackedAxisGap, right: padR + nonStackedAxisGap }}>
@@ -767,7 +836,10 @@ function BMDashboard({ navigateTo, selectLead, selectTask }) {
                       onMouseLeave={() => setChartOverlayTooltip(null)}
                     >
                       <div className="w-2.5 h-2.5 rounded-full bg-[var(--color-success)] border-2 border-white shadow-sm relative">
-                        <span className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1 text-xs font-bold text-[var(--color-success)] whitespace-nowrap pointer-events-none">
+                        <span
+                          className="absolute bottom-full left-1/2 -translate-x-1/2 text-xs font-bold text-[var(--color-success)] whitespace-nowrap pointer-events-none"
+                          style={{ marginBottom: `${4 + (nonStackedOverlayLabelOffsets[i] ?? 0)}px` }}
+                        >
                           {v}{overlayConfig?.suffix ?? ""}
                         </span>
                       </div>
@@ -864,25 +936,25 @@ function BMDashboard({ navigateTo, selectLead, selectTask }) {
         <div>
           <svg viewBox={`0 0 ${svgW} ${svgH}`} className="w-full overflow-visible" style={{ maxHeight: 320 }}>
             {/* Y-axis line */}
-            <line x1={pad.l} y1={pad.t} x2={pad.l} y2={pad.t + plotH} stroke="#d1d5db" strokeWidth={1} />
+            <line x1={pad.l} y1={pad.t} x2={pad.l} y2={pad.t + plotH} stroke="var(--neutral-300)" strokeWidth={1} />
             {/* Horizontal grid lines and y-axis labels */}
             {[0, 25, 50, 75, 100].map((frac) => {
               const y = pad.t + plotH - (frac / 100) * plotH;
               return (
                 <g key={frac}>
-                  <line x1={pad.l} y1={y} x2={stackedLineHasOverlay ? svgW - pad.r : svgW - stackedLinePad.r} y2={y} stroke="#e5e5e5" strokeWidth={0.5} strokeDasharray="2,2" />
-                  <text x={pad.l - 6} y={y + 3} textAnchor="end" fontSize={12} fill="#6b7280">{frac}%</text>
+                  <line x1={pad.l} y1={y} x2={stackedLineHasOverlay ? svgW - pad.r : svgW - stackedLinePad.r} y2={y} stroke="var(--neutral-200)" strokeWidth={0.5} strokeDasharray="2,2" />
+                  <text x={pad.l - 6} y={y + 3} textAnchor="end" fontSize={12} fill="var(--chart-neutral-dark)">{frac}%</text>
                 </g>
               );
             })}
             {stackedLineHasOverlay && (
-              <line x1={svgW - pad.r} y1={pad.t} x2={svgW - pad.r} y2={pad.t + plotH} stroke="#d1d5db" strokeWidth={1} />
+              <line x1={svgW - pad.r} y1={pad.t} x2={svgW - pad.r} y2={pad.t + plotH} stroke="var(--neutral-300)" strokeWidth={1} />
             )}
             {stackedLineHasOverlay && [0, 25, 50, 75, 100].map((frac) => {
               const y = pad.t + plotH * (1 - frac / 100);
               const val = Math.round(overlayMax * frac / 100);
               return (
-                <text key={`ov-${frac}`} x={svgW - pad.r + 6} y={y + 3} textAnchor="start" fontSize={12} fill="#6b7280">{val}{overlayConfig?.suffix ?? ""}</text>
+                <text key={`ov-${frac}`} x={svgW - pad.r + 6} y={y + 3} textAnchor="start" fontSize={12} fill="var(--chart-neutral-dark)">{val}{overlayConfig?.suffix ?? ""}</text>
               );
             })}
             {paths.map(({ areaD, pathD, color, key }) => (
@@ -907,7 +979,7 @@ function BMDashboard({ navigateTo, selectLead, selectTask }) {
             {trendsChartData.map((row, i) => {
               const x = n > 1 ? pad.l + (i / (n - 1)) * plotW : pad.l + plotW / 2;
               return (
-                <text key={i} x={x} y={svgH - 6} textAnchor="middle" fontSize={12} fill="#6b7280">{row.period}</text>
+                <text key={i} x={x} y={svgH - 6} textAnchor="middle" fontSize={12} fill="var(--chart-neutral-dark)">{row.period}</text>
               );
             })}
           </svg>
@@ -945,24 +1017,24 @@ function BMDashboard({ navigateTo, selectLead, selectTask }) {
       <div>
         <svg viewBox={`0 0 ${svgW} ${svgH}`} className="w-full overflow-visible" style={{ maxHeight: 320 }}>
           {/* Y-axis line */}
-          <line x1={pad.l} y1={pad.t} x2={pad.l} y2={pad.t + plotH} stroke="#d1d5db" strokeWidth={1} />
+          <line x1={pad.l} y1={pad.t} x2={pad.l} y2={pad.t + plotH} stroke="var(--neutral-300)" strokeWidth={1} />
           {/* Horizontal grid lines and y-axis labels */}
           {yTicks.map(({ frac, val }) => {
             const y = pad.t + plotH * (1 - frac);
             return (
               <g key={frac}>
-                <line x1={pad.l} y1={y} x2={hasOverlay ? svgW - 25 : svgW - pad.r} y2={y} stroke="#e5e5e5" strokeWidth={0.5} strokeDasharray="2,2" />
-                <text x={pad.l - 6} y={y + 3} textAnchor="end" fontSize={12} fill="#6b7280">{val}{trendsConfig.suffix}</text>
+                <line x1={pad.l} y1={y} x2={hasOverlay ? svgW - 25 : svgW - pad.r} y2={y} stroke="var(--neutral-200)" strokeWidth={0.5} strokeDasharray="2,2" />
+                <text x={pad.l - 6} y={y + 3} textAnchor="end" fontSize={12} fill="var(--chart-neutral-dark)">{val}{trendsConfig.suffix}</text>
               </g>
             );
           })}
           {hasOverlay && (
-            <line x1={svgW - 25} y1={pad.t} x2={svgW - 25} y2={pad.t + plotH} stroke="#d1d5db" strokeWidth={1} />
+            <line x1={svgW - 25} y1={pad.t} x2={svgW - 25} y2={pad.t + plotH} stroke="var(--neutral-300)" strokeWidth={1} />
           )}
           {hasOverlay && overlayYTicks.map(({ frac, val }) => {
             const y = pad.t + plotH * (1 - frac);
             return (
-              <text key={`ov-${frac}`} x={svgW - 25 + 6} y={y + 3} textAnchor="start" fontSize={12} fill="#6b7280">{val}{overlayConfig?.suffix ?? ""}</text>
+              <text key={`ov-${frac}`} x={svgW - 25 + 6} y={y + 3} textAnchor="start" fontSize={12} fill="var(--chart-neutral-dark)">{val}{overlayConfig?.suffix ?? ""}</text>
             );
           })}
           {areaD && <path d={areaD} fill={trendsConfig.color} opacity={0.07} />}
@@ -970,10 +1042,10 @@ function BMDashboard({ navigateTo, selectLead, selectTask }) {
           {pts.map((p, i) => (
             <g key={i}>
               <circle cx={p.x} cy={p.y} r={3} fill={trendsConfig.color} stroke="white" strokeWidth={1.5} />
-              <text x={p.x} y={Math.max(12, p.y - 10)} textAnchor="middle" fontSize={12} fontWeight={600} fill="#555">
+              <text x={p.x} y={Math.max(12, p.y - 10)} textAnchor="middle" fontSize={12} fontWeight={600} fill="var(--chart-black)">
                 {p.v}{trendsConfig.suffix}
               </text>
-              <text x={p.x} y={svgH - 6} textAnchor="middle" fontSize={12} fill="#6b7280">{trendsLabels[i]}</text>
+              <text x={p.x} y={svgH - 6} textAnchor="middle" fontSize={12} fill="var(--chart-neutral-dark)">{trendsLabels[i]}</text>
             </g>
           ))}
           {hasOverlay && overlayPathD && (
@@ -1101,39 +1173,9 @@ function BMDashboard({ navigateTo, selectLead, selectTask }) {
           />
         )}
       </AnimatePresence>
-      {/* Home — top of summary page, default landing */}
-      <div id="home" className="scroll-mt-4 mb-4">
-        <motion.p
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ duration: 0.3 }}
-          className="text-sm font-semibold text-[var(--hertz-primary)] uppercase tracking-wider mb-1"
-        >
-          {greeting}
-        </motion.p>
-        <motion.h1
-          initial={{ opacity: 0, y: 8 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.4, ease: [0.4, 0, 0.2, 1] }}
-          className="text-3xl md:text-4xl font-extrabold text-[var(--hertz-black)] tracking-tight"
-        >
-          {displayName}
-        </motion.h1>
-        {insight && (
-          <motion.p
-            initial={{ opacity: 0, y: 4 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.3, duration: 0.35, ease: [0.4, 0, 0.2, 1] }}
-            className="text-sm text-[var(--neutral-600)] mt-2.5"
-          >
-            {insight}
-          </motion.p>
-        )}
-      </div>
-
       {/* Work — Meeting Prep & Leaderboard modules, above Summary */}
       <div id="work" className="scroll-mt-4 mb-4">
-        <SectionHeader title="Work" />
+        <SectionHeader title="Work" subtitle="Prepare for your weekly meeting and see how you rank." />
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <MeetingPrepModule
             navigateTo={navigateTo}
@@ -1155,6 +1197,7 @@ function BMDashboard({ navigateTo, selectLead, selectTask }) {
       <div id="dashboard" data-onboarding="summary" className="scroll-mt-4 mb-4">
       <SectionHeader
         title="Summary"
+        subtitle="Key metrics and trends for your branch this period."
         action={
         <motion.button
           whileHover={!reduceMotion ? { scale: 1.05 } : {}}
@@ -1281,12 +1324,8 @@ function BMDashboard({ navigateTo, selectLead, selectTask }) {
       </div>
 
       {/* View Trends — full view inline under Summary metrics */}
-      <motion.div
-        {...cardAnim(3, reduceMotion)}
-        className="mb-4"
-        data-onboarding="view-trends"
-      >
-        <div className="border border-[var(--neutral-200)] rounded-lg bg-white shadow-[var(--shadow-md)] overflow-hidden">
+      <motion.div {...cardAnim(3, reduceMotion)} className="mb-4">
+        <div className="border border-[var(--neutral-200)] rounded-lg bg-white shadow-[var(--shadow-md)] overflow-hidden" data-onboarding="view-trends">
           <div className="px-5 pt-5 pb-4">
             <div className="flex flex-wrap items-end gap-2 mb-4">
               <div className="shrink-0">
@@ -1418,7 +1457,7 @@ function BMDashboard({ navigateTo, selectLead, selectTask }) {
 
       {/* My Leads */}
       <div id="lead-pipeline" className="scroll-mt-4 mb-6" data-onboarding="my-leads">
-        <SectionHeader title="My Leads" action={
+        <SectionHeader title="My Leads" subtitle="All assigned leads — filter, enrich, and take action." action={
           <motion.button
             whileHover={!reduceMotion ? { scale: 1.05 } : {}}
             whileTap={!reduceMotion ? { scale: 0.95 } : {}}
@@ -1468,6 +1507,28 @@ function BMDashboard({ navigateTo, selectLead, selectTask }) {
             </button>
           </div>
         </div>
+      {/* Search bar */}
+      <div className="relative mb-3">
+        <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--neutral-400)] pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+        </svg>
+        <input
+          type="text"
+          value={leadsSearchQuery}
+          onChange={(e) => setLeadsSearchQuery(e.target.value)}
+          placeholder="Search by name or reservation #"
+          className="w-full pl-9 pr-8 py-2 border border-[var(--neutral-200)] rounded-lg text-sm text-[var(--hertz-black)] bg-white focus:outline-none focus:border-[var(--hertz-primary)] focus:ring-1 focus:ring-[var(--hertz-primary-focus)]"
+        />
+        {leadsSearchQuery && (
+          <button
+            onClick={() => setLeadsSearchQuery("")}
+            className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[var(--neutral-400)] hover:text-[var(--hertz-black)] transition-colors"
+            aria-label="Clear search"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+          </button>
+        )}
+      </div>
       {/* Filter bar */}
       <div className="flex items-center gap-2 flex-nowrap mb-4 w-full overflow-x-auto">
         <div className="flex items-center gap-1.5 shrink-0">
@@ -1548,15 +1609,17 @@ function BMDashboard({ navigateTo, selectLead, selectTask }) {
             ))}
           </select>
         </div>
-        {(leadsStatusFilter !== "All" || leadsInsuranceFilter !== "All" || leadsCancelReasonFilter !== "All" || leadsDaysOpenFilter !== "All" || leadsTimeToContactFilter !== "All" || leadsFirstContactByFilter !== "All") && (
+        {(leadsSearchQuery || leadsStatusFilter !== "All" || leadsInsuranceFilter !== "All" || leadsCancelReasonFilter !== "All" || leadsDaysOpenFilter !== "All" || leadsTimeToContactFilter !== "All" || leadsFirstContactByFilter !== "All") && (
           <button
             onClick={() => {
+              setLeadsSearchQuery("");
               setLeadsStatusFilter("All");
               setLeadsInsuranceFilter("All");
               setLeadsCancelReasonFilter("All");
               setLeadsDaysOpenFilter("All");
               setLeadsTimeToContactFilter("All");
               setLeadsFirstContactByFilter("All");
+              setLeadsSortField(null);
             }}
             className="px-2.5 py-1.5 rounded-lg text-xs font-medium text-[var(--neutral-600)] hover:bg-[var(--neutral-100)] transition-colors cursor-pointer shrink-0"
           >
@@ -1583,10 +1646,10 @@ function BMDashboard({ navigateTo, selectLead, selectTask }) {
               <th className="px-4 py-3 w-[10%] overflow-hidden">Received Date</th>
               <th className="px-4 py-3 w-[11%] overflow-hidden">Confirmation #</th>
               <th className="px-4 py-3 w-[12%] overflow-hidden">Customer</th>
-              <th className="px-4 py-3 w-[8%] overflow-hidden">Status</th>
-              <th className="px-4 py-3 w-[8%] overflow-hidden">Days Open</th>
+              <th className="px-4 py-3 w-[8%] overflow-hidden cursor-pointer select-none hover:text-[var(--hertz-primary)] transition-colors" onClick={() => handleSortClick("status")}>Status<SortIcon field="status" /></th>
+              <th className="px-4 py-3 w-[8%] overflow-hidden cursor-pointer select-none hover:text-[var(--hertz-primary)] transition-colors" onClick={() => handleSortClick("daysOpen")}>Days Open<SortIcon field="daysOpen" /></th>
               <th className="px-4 py-3 w-[11%] overflow-hidden">First Contact Date</th>
-              <th className="px-4 py-3 w-[10%] overflow-hidden">Time to Contact</th>
+              <th className="px-4 py-3 w-[10%] overflow-hidden cursor-pointer select-none hover:text-[var(--hertz-primary)] transition-colors" onClick={() => handleSortClick("timeToFirstContact")}>Time to Contact<SortIcon field="timeToFirstContact" /></th>
               <th className="px-4 py-3 w-[14%] overflow-hidden">Cancel Reason</th>
               <th className="px-4 py-3 w-[16%] overflow-hidden">Comments</th>
             </tr>
@@ -1636,12 +1699,32 @@ function BMDashboard({ navigateTo, selectLead, selectTask }) {
                     <td className="px-4 py-3 text-center text-sm text-[var(--neutral-600)] whitespace-nowrap min-w-0 overflow-hidden">{row.INIT_DT_FINAL}</td>
                     <td className="px-4 py-3 text-center text-sm text-[var(--hertz-black)] font-medium whitespace-nowrap min-w-0 overflow-hidden">{row.CONFIRM_NUM}</td>
                     <td className="px-4 py-3 text-center text-sm font-semibold text-[var(--hertz-black)] min-w-0 overflow-hidden">
-                      <span className="block truncate" title={row.RENTER_LAST}>{row.RENTER_LAST}</span>
+                      <span className="flex items-center justify-center gap-1.5 truncate" title={row.RENTER_LAST}>
+                        {row.RENTER_LAST}
+                        {lead.gmDirective && (
+                          <span className="inline-flex items-center shrink-0 w-4 h-4 rounded-full bg-[var(--color-info)] text-white" title={`GM Directive: ${lead.gmDirective}`}>
+                            <svg className="w-3 h-3 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M7 8h10M7 12h4m1 8l-4-4H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-3l-4 4z" /></svg>
+                          </span>
+                        )}
+                      </span>
                     </td>
                     <td className="px-4 py-3 text-center min-w-0 overflow-hidden"><StatusBadge status={row.STATUS} /></td>
-                    <td className="px-4 py-3 text-center text-sm text-[var(--neutral-600)] min-w-0 overflow-hidden">{row.DAYS_OPEN}</td>
+                    <td className="px-4 py-3 text-center text-sm min-w-0 overflow-hidden">
+                      <span className={`font-medium ${
+                        (lead.daysOpen ?? 0) >= 8 ? "text-[var(--color-error)]" :
+                        (lead.daysOpen ?? 0) >= 4 ? "text-[var(--color-warning)]" :
+                        "text-[var(--color-success)]"
+                      }`}>{row.DAYS_OPEN}</span>
+                    </td>
                     <td className="px-4 py-3 text-center text-sm text-[var(--neutral-600)] whitespace-nowrap min-w-0 overflow-hidden">{row.DT_FROM_ALPHA1}</td>
-                    <td className="px-4 py-3 text-center text-sm text-[var(--neutral-600)] min-w-0 overflow-hidden">{row.TIME_TO_CONTACT}</td>
+                    <td className="px-4 py-3 text-center text-sm min-w-0 overflow-hidden">
+                      <span className={`font-medium ${
+                        lead.contactRange === "(a)<30min" ? "text-[var(--color-success)]" :
+                        lead.contactRange === "NO CONTACT" || lead.contactRange === "(g)24-48 hrs" ? "text-[var(--color-error)]" :
+                        lead.contactRange === "(b)31min-1hr" || lead.contactRange === "(c)1-3 hrs" ? "text-[var(--color-warning)]" :
+                        "text-[var(--neutral-600)]"
+                      }`}>{row.TIME_TO_CONTACT}</span>
+                    </td>
                     <td className="px-4 py-3 text-center text-sm text-[var(--neutral-600)] min-w-0 overflow-hidden">
                       <span className="block truncate" title={row.CANCEL_REASON}>{row.CANCEL_REASON}</span>
                     </td>
@@ -1707,21 +1790,43 @@ function BMDashboard({ navigateTo, selectLead, selectTask }) {
       </div>
       </div>
 
+      <AnimatePresence>
+        {showCreateTask && (
+          <CreateTaskModal
+            onSubmit={handleCreateTask}
+            onCancel={() => setShowCreateTask(false)}
+            branch={branch}
+            userProfile={userProfile}
+          />
+        )}
+      </AnimatePresence>
       {/* Open Tasks */}
       <div id="open-tasks" className="scroll-mt-4 mb-6">
-      <SectionHeader title="Open Tasks" action={
-        <motion.button
-          whileHover={!reduceMotion ? { scale: 1.05 } : {}}
-          whileTap={!reduceMotion ? { scale: 0.95 } : {}}
-          onClick={() => {
-            exportTasksToCSV(filteredBranchTasks, (id) => getLeadById(leads ?? [], id));
-          }}
-          className="flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium bg-[var(--neutral-50)] text-[var(--neutral-600)] border border-transparent hover:border-[var(--neutral-200)] hover:bg-[var(--neutral-100)] transition-colors cursor-pointer shrink-0"
-          title="Export filtered tasks as CSV"
-        >
-          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3M3 17v3a2 2 0 002 2h14a2 2 0 002-2v-3" /></svg>
-          Export
-        </motion.button>
+      <SectionHeader title="Open Tasks" subtitle="Track outstanding items and follow-ups." action={
+        <div className="flex items-center gap-2">
+          <motion.button
+            whileHover={!reduceMotion ? { scale: 1.05 } : {}}
+            whileTap={!reduceMotion ? { scale: 0.95 } : {}}
+            onClick={() => setShowCreateTask(true)}
+            className="flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-semibold bg-[var(--hertz-primary)] text-[var(--hertz-black)] hover:bg-[var(--hertz-primary-hover)] transition-colors cursor-pointer shrink-0"
+            title="Create a new task"
+          >
+            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
+            New Task
+          </motion.button>
+          <motion.button
+            whileHover={!reduceMotion ? { scale: 1.05 } : {}}
+            whileTap={!reduceMotion ? { scale: 0.95 } : {}}
+            onClick={() => {
+              exportTasksToCSV(filteredBranchTasks, (id) => getLeadById(leads ?? [], id));
+            }}
+            className="flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium bg-[var(--neutral-50)] text-[var(--neutral-600)] border border-transparent hover:border-[var(--neutral-200)] hover:bg-[var(--neutral-100)] transition-colors cursor-pointer shrink-0"
+            title="Export filtered tasks as CSV"
+          >
+            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3M3 17v3a2 2 0 002 2h14a2 2 0 002-2v-3" /></svg>
+            Export
+          </motion.button>
+        </div>
       } />
       {/* Task filter bar */}
       <div className="flex items-center gap-2 flex-nowrap mb-4 w-full overflow-x-auto">
@@ -1912,12 +2017,9 @@ export function BMDashboardInbox({ navigateTo, selectLead }) {
 
   return (
     <>
-      <SectionHeader title="Inbox" />
-      <p className="text-sm text-[var(--neutral-600)] mb-5">
-        Messages from your General Manager tied to specific reservations. Click a row to review and take action.
-      </p>
-      <div className="border border-[var(--neutral-200)] rounded-lg overflow-hidden shadow-[var(--shadow-md)] max-h-48 overflow-y-auto">
-        <table className="w-full text-sm">
+      <SectionHeader title="Inbox" subtitle="GM directives tied to specific reservations — click a row to review and take action." />
+      <div className="border border-[var(--neutral-200)] rounded-lg overflow-hidden shadow-[var(--shadow-md)] max-h-[28rem] overflow-auto">
+        <table className="w-full text-sm min-w-[600px]">
           <thead>
             <tr className="bg-[var(--hertz-black)] text-left text-xs text-white font-semibold uppercase tracking-wider">
               <th className="px-4 py-3">Customer</th>
@@ -1958,7 +2060,7 @@ export function BMDashboardInbox({ navigateTo, selectLead }) {
                   <td className="px-4 py-3 text-sm text-[var(--neutral-600)]">{lead.branch}</td>
                   <td className="px-4 py-3"><StatusBadge status={lead.status} /></td>
                   <td className="px-4 py-3 text-sm text-[var(--neutral-600)]">{lead.daysOpen}d</td>
-                  <td className="px-4 py-3 text-sm text-[var(--neutral-600)] max-w-xs truncate">{lead.gmDirective}</td>
+                  <td className="px-4 py-3 text-sm text-[var(--neutral-600)] min-w-[200px] max-w-[320px] break-words whitespace-normal">{lead.gmDirective}</td>
                 </motion.tr>
               ))
             )}
@@ -2051,6 +2153,20 @@ function GMChartBar({
     const niceMax = isCountMetric ? (stackedMaxTotal <= 4 ? 4 : stackedMaxTotal <= 8 ? 8 : stackedMaxTotal <= 12 ? 12 : Math.ceil(stackedMaxTotal / 5) * 5) : 100;
     const yTickCount = 5;
     const yTicks = Array.from({ length: yTickCount }, (_, i) => Math.round((niceMax * i) / (yTickCount - 1)));
+    const STACKED_CHART_HEIGHT = 260;
+    const STACKED_OVERLAY_INSET = 6;
+    const stackedPlotHeightPx = STACKED_CHART_HEIGHT - STACKED_OVERLAY_INSET * 2;
+    const stackedBarTopPercents = trendsChartData.map((row) =>
+      isCountMetric ? (row.total / niceMax) * 100 : Object.values(row.segments ?? {}).reduce((s, v) => s + v, 0)
+    );
+    const stackedOverlayPercents = stackedHasOverlay ? overlayValues.map((v) => (overlayMax > 0 ? (v / overlayMax) * 100 : 0)) : [];
+    const stackedOverlayLabelOffsets = stackedHasOverlay
+      ? computeOverlayLabelOffsets({
+          overlayPercents: stackedOverlayPercents,
+          barPercents: stackedBarTopPercents,
+          chartHeightPx: stackedPlotHeightPx,
+        })
+      : [];
     return (
       <div>
         <div className="flex items-center pt-1 pb-9">
@@ -2112,7 +2228,7 @@ function GMChartBar({
                 })}
               </div>
               {stackedHasOverlay && (() => {
-                const OVERLAY_INSET = 6;
+                const OVERLAY_INSET = STACKED_OVERLAY_INSET;
                 const bottomPct = (val) => overlayMax > 0 ? (val / overlayMax) * 100 : 0;
                 return (
                   <div className="absolute z-20 pointer-events-none" style={{ top: OVERLAY_INSET, bottom: OVERLAY_INSET, left: AXIS_GAP, right: stackedPadR + AXIS_GAP }}>
@@ -2143,7 +2259,12 @@ function GMChartBar({
                           onMouseLeave={() => setChartOverlayTooltip(null)}
                         >
                           <div className="w-2.5 h-2.5 rounded-full bg-[var(--color-success)] border-2 border-white shadow-sm relative">
-                            <span className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1 text-xs font-bold text-[var(--color-success)] whitespace-nowrap pointer-events-none">{v}{overlayConfig?.suffix ?? ""}</span>
+                            <span
+                              className="absolute bottom-full left-1/2 -translate-x-1/2 text-xs font-bold text-[var(--color-success)] whitespace-nowrap pointer-events-none"
+                              style={{ marginBottom: `${4 + (stackedOverlayLabelOffsets[i] ?? 0)}px` }}
+                            >
+                              {v}{overlayConfig?.suffix ?? ""}
+                            </span>
                           </div>
                         </div>
                       );
@@ -2204,6 +2325,18 @@ function GMChartBar({
   const n = trendsValues.length;
   const padR = hasOverlay ? 40 : 0;
   const overlayTickValues = [0, 0.25, 0.5, 0.75, 1].map((f) => Math.round(overlayMax * f));
+  const NONSTACKED_CHART_HEIGHT = 280;
+  const NONSTACKED_OVERLAY_INSET = 6;
+  const nonStackedPlotHeightPx = NONSTACKED_CHART_HEIGHT - NONSTACKED_OVERLAY_INSET * 2;
+  const nonStackedBarTopPercents = trendsValues.map((v) => (trendsMax > 0 ? Math.min(100, (v / trendsMax) * 100) : 0));
+  const nonStackedOverlayPercents = hasOverlay ? overlayValues.map((v) => (overlayMax > 0 ? (v / overlayMax) * 100 : 0)) : [];
+  const nonStackedOverlayLabelOffsets = hasOverlay
+    ? computeOverlayLabelOffsets({
+        overlayPercents: nonStackedOverlayPercents,
+        barPercents: nonStackedBarTopPercents,
+        chartHeightPx: nonStackedPlotHeightPx,
+      })
+    : [];
   return (
     <div>
       <div className="flex" style={{ height: 280, gap: AXIS_GAP }}>
@@ -2230,7 +2363,7 @@ function GMChartBar({
               })}
             </div>
             {hasOverlay && (() => {
-              const OVERLAY_INSET = 6;
+              const OVERLAY_INSET = NONSTACKED_OVERLAY_INSET;
               const bottomPct = (val) => overlayMax > 0 ? (val / overlayMax) * 100 : 0;
               return (
                 <div className="absolute z-20 pointer-events-none" style={{ top: OVERLAY_INSET, bottom: OVERLAY_INSET, left: AXIS_GAP, right: padR + AXIS_GAP }}>
@@ -2260,7 +2393,12 @@ function GMChartBar({
                         onMouseLeave={() => setChartOverlayTooltip(null)}
                       >
                         <div className="w-2.5 h-2.5 rounded-full bg-[var(--color-success)] border-2 border-white shadow-sm relative">
-                          <span className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1 text-xs font-bold text-[var(--color-success)] whitespace-nowrap pointer-events-none">{v}{overlayConfig?.suffix ?? ""}</span>
+                          <span
+                            className="absolute bottom-full left-1/2 -translate-x-1/2 text-xs font-bold text-[var(--color-success)] whitespace-nowrap pointer-events-none"
+                            style={{ marginBottom: `${4 + (nonStackedOverlayLabelOffsets[i] ?? 0)}px` }}
+                          >
+                            {v}{overlayConfig?.suffix ?? ""}
+                          </span>
                         </div>
                       </div>
                     );
@@ -2336,20 +2474,20 @@ function GMChartLine({ trendsChartData, isStackedView, trendsConfig, trendsValue
     return (
       <div>
         <svg viewBox={`0 0 ${svgW} ${svgH}`} className="w-full overflow-visible" style={{ maxHeight: 320 }}>
-          <line x1={pad.l} y1={pad.t} x2={pad.l} y2={pad.t + plotH} stroke="#d1d5db" strokeWidth={1} />
+          <line x1={pad.l} y1={pad.t} x2={pad.l} y2={pad.t + plotH} stroke="var(--neutral-300)" strokeWidth={1} />
           {[0, 25, 50, 75, 100].map((frac) => {
             const y = pad.t + plotH - (frac / 100) * plotH;
             return (
               <g key={frac}>
-                <line x1={pad.l} y1={y} x2={stackedLineHasOverlay ? svgW - pad.r : svgW - pad.r - stackedLinePadR} y2={y} stroke="#e5e5e5" strokeWidth={0.5} strokeDasharray="2,2" />
-                <text x={pad.l - 6} y={y + 3} textAnchor="end" fontSize={12} fill="#6b7280">{frac}%</text>
+                <line x1={pad.l} y1={y} x2={stackedLineHasOverlay ? svgW - pad.r : svgW - pad.r - stackedLinePadR} y2={y} stroke="var(--neutral-200)" strokeWidth={0.5} strokeDasharray="2,2" />
+                <text x={pad.l - 6} y={y + 3} textAnchor="end" fontSize={12} fill="var(--chart-neutral-dark)">{frac}%</text>
               </g>
             );
           })}
           {stackedLineHasOverlay && [0, 25, 50, 75, 100].map((frac) => {
             const y = pad.t + plotH * (1 - frac / 100);
             const val = Math.round(overlayMax * frac / 100);
-            return <text key={`ov-${frac}`} x={svgW - pad.r + 6} y={y + 3} textAnchor="start" fontSize={12} fill="#6b7280">{val}{overlayConfig?.suffix ?? ""}</text>;
+            return <text key={`ov-${frac}`} x={svgW - pad.r + 6} y={y + 3} textAnchor="start" fontSize={12} fill="var(--chart-neutral-dark)">{val}{overlayConfig?.suffix ?? ""}</text>;
           })}
           {paths.map(({ areaD, pathD, color, key }) => (
             <g key={key}>
@@ -2370,7 +2508,7 @@ function GMChartLine({ trendsChartData, isStackedView, trendsConfig, trendsValue
           )}
           {trendsChartData.map((row, i) => {
             const x = n > 1 ? pad.l + (i / (n - 1)) * plotW : pad.l + plotW / 2;
-            return <text key={i} x={x} y={svgH - 6} textAnchor="middle" fontSize={12} fill="#6b7280">{row.period}</text>;
+            return <text key={i} x={x} y={svgH - 6} textAnchor="middle" fontSize={12} fill="var(--chart-neutral-dark)">{row.period}</text>;
           })}
         </svg>
       </div>
@@ -2397,28 +2535,28 @@ function GMChartLine({ trendsChartData, isStackedView, trendsConfig, trendsValue
   return (
     <div>
       <svg viewBox={`0 0 ${svgW} ${svgH}`} className="w-full overflow-visible" style={{ maxHeight: 320 }}>
-        <line x1={pad.l} y1={pad.t} x2={pad.l} y2={pad.t + plotH} stroke="#d1d5db" strokeWidth={1} />
+        <line x1={pad.l} y1={pad.t} x2={pad.l} y2={pad.t + plotH} stroke="var(--neutral-300)" strokeWidth={1} />
         {yTicks.map(({ frac, val }) => {
           const y = pad.t + plotH * (1 - frac);
           return (
             <g key={frac}>
-              <line x1={pad.l} y1={y} x2={hasOverlay ? svgW - 25 : svgW - pad2.r} y2={y} stroke="#e5e5e5" strokeWidth={0.5} strokeDasharray="2,2" />
-              <text x={pad.l - 6} y={y + 3} textAnchor="end" fontSize={12} fill="#6b7280">{val}{trendsConfig.suffix}</text>
+              <line x1={pad.l} y1={y} x2={hasOverlay ? svgW - 25 : svgW - pad2.r} y2={y} stroke="var(--neutral-200)" strokeWidth={0.5} strokeDasharray="2,2" />
+              <text x={pad.l - 6} y={y + 3} textAnchor="end" fontSize={12} fill="var(--chart-neutral-dark)">{val}{trendsConfig.suffix}</text>
             </g>
           );
         })}
-        {hasOverlay && <line x1={svgW - 25} y1={pad.t} x2={svgW - 25} y2={pad.t + plotH} stroke="#d1d5db" strokeWidth={1} />}
+        {hasOverlay && <line x1={svgW - 25} y1={pad.t} x2={svgW - 25} y2={pad.t + plotH} stroke="var(--neutral-300)" strokeWidth={1} />}
         {hasOverlay && overlayYTicks.map(({ frac, val }) => {
           const y = pad.t + plotH * (1 - frac);
-          return <text key={`ov-${frac}`} x={svgW - 25 + 6} y={y + 3} textAnchor="start" fontSize={12} fill="#6b7280">{val}{overlayConfig?.suffix ?? ""}</text>;
+          return <text key={`ov-${frac}`} x={svgW - 25 + 6} y={y + 3} textAnchor="start" fontSize={12} fill="var(--chart-neutral-dark)">{val}{overlayConfig?.suffix ?? ""}</text>;
         })}
         {areaD && <path d={areaD} fill={trendsConfig.color} opacity={0.07} />}
         <path d={pathD} fill="none" stroke={trendsConfig.color} strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round" />
         {pts.map((p, i) => (
           <g key={i}>
             <circle cx={p.x} cy={p.y} r={3} fill={trendsConfig.color} stroke="white" strokeWidth={1.5} />
-            <text x={p.x} y={Math.max(12, p.y - 10)} textAnchor="middle" fontSize={12} fontWeight={600} fill="#555">{p.v}{trendsConfig.suffix}</text>
-            <text x={p.x} y={svgH - 6} textAnchor="middle" fontSize={12} fill="#6b7280">{trendsLabels[i]}</text>
+            <text x={p.x} y={Math.max(12, p.y - 10)} textAnchor="middle" fontSize={12} fontWeight={600} fill="var(--chart-black)">{p.v}{trendsConfig.suffix}</text>
+            <text x={p.x} y={svgH - 6} textAnchor="middle" fontSize={12} fill="var(--chart-neutral-dark)">{trendsLabels[i]}</text>
           </g>
         ))}
         {hasOverlay && overlayPathD && (
@@ -2438,9 +2576,9 @@ function GMChartLine({ trendsChartData, isStackedView, trendsConfig, trendsValue
 }
 
 const GM_SUMMARY_TRENDS_METRIC_CONFIG = {
-  leadPipeline: { key: "totalLeads", label: "Total Leads", color: "#272425", suffix: "" },
-  conversionRate: { key: "conversionRate", label: "Conversion Rate", color: "#2E7D32", suffix: "%" },
-  commentRate: { key: "commentRate", label: "Comment Rate", color: "#FFD100", suffix: "%" },
+  leadPipeline: { key: "totalLeads", label: "Total Leads", color: "var(--chart-black)", suffix: "" },
+  conversionRate: { key: "conversionRate", label: "Conversion Rate", color: "var(--chart-success)", suffix: "%" },
+  commentRate: { key: "commentRate", label: "Comment Rate", color: "var(--chart-primary)", suffix: "%" },
 };
 const GM_STACKED_SUPPORTED_METRICS = ["leadPipeline", "conversionRate", "commentRate"];
 
@@ -2466,11 +2604,11 @@ function getGMContextualInsight({ stats, prevStats }) {
 
 function GMDashboardPage({ navigateTo }) {
   const { userProfile } = useAuth();
-  const { leads } = useData();
+  const { leads, loading } = useData();
   const reduceMotion = useReducedMotion();
   const displayName = userProfile?.displayName ?? roleUsers.gm?.name ?? "there";
   const [drilldownMetric, setDrilldownMetric] = useState(null);
-  const presets = useMemo(() => getDateRangePresets(), []);
+  const presets = useMemo(() => getDateRangePresets(), [loading]);
 
   const [selectedPresetKey, setSelectedPresetKey] = useState("this_week");
   const [summaryTrendsMetric, setSummaryTrendsMetric] = useState("leadPipeline");
@@ -2498,9 +2636,10 @@ function GMDashboardPage({ navigateTo }) {
     return preset ? { start: preset.start, end: preset.end } : null;
   }, [trendsTimePresetKey, trendsUseCustom, trendsCustomStart, trendsCustomEnd, presets]);
 
-  const stats = useMemo(() => getGMDashboardStats(leads, dateRange), [leads, dateRange]);
+  const gmName = resolveGMName(userProfile?.displayName, userProfile?.id);
+  const stats = useMemo(() => getGMDashboardStats(leads, dateRange, gmName), [leads, dateRange, gmName]);
   const prevRange = useMemo(() => getComparisonDateRange(selectedPresetKey), [selectedPresetKey]);
-  const prevStats = useMemo(() => (prevRange ? getGMDashboardStats(leads, prevRange) : null), [leads, prevRange]);
+  const prevStats = useMemo(() => (prevRange ? getGMDashboardStats(leads, prevRange, gmName) : null), [leads, prevRange, gmName]);
 
   const greeting = getTimeOfDayGreeting();
   const insight = getGMContextualInsight({ stats, prevStats });
@@ -2549,8 +2688,9 @@ function GMDashboardPage({ navigateTo }) {
     return entries;
   }, [isStackedView]);
 
-  const SEGMENT_COLORS = { Rented: "var(--hertz-primary)", Cancelled: "var(--hertz-black)", Unused: "var(--neutral-600)" };
+  const SEGMENT_COLORS = { Rented: "var(--chart-primary)", Cancelled: "var(--chart-black)", Unused: "var(--chart-neutral)" };
   const SEGMENT_ORDER = ["Rented", "Cancelled", "Unused"];
+  const GM_PALETTE = ["var(--chart-primary)", "var(--hertz-primary-light)", "var(--hertz-gold-plus)", "var(--chart-black)", "var(--chart-info)", "var(--chart-accent)", "var(--chart-neutral)", "var(--chart-neutral-dark)"];
   const stackedSegmentKeys = useMemo(() => {
     if (!isStackedView) return [];
     const keys = new Set();
@@ -2567,7 +2707,7 @@ function GMDashboardPage({ navigateTo }) {
     });
   }, [isStackedView, trendsChartData]);
 
-  const getSegmentColor = (key) => SEGMENT_COLORS[key] ?? "#78909C";
+  const getSegmentColor = (key) => SEGMENT_COLORS[key] ?? GM_PALETTE[Math.abs(key.split("").reduce((a, c) => a + c.charCodeAt(0), 0)) % GM_PALETTE.length];
 
   useEffect(() => {
     if (summaryTrendsChartType === "line" && (trendsOverlayMetric || trendsGroupBy !== "period")) {
@@ -2609,17 +2749,32 @@ function GMDashboardPage({ navigateTo }) {
   return (
     <div className="max-w-[var(--container-max)]">
       <AnimatePresence>
-        {drilldownMetric && (
-          <MetricDrilldownModal
-            metricKey={drilldownMetric}
-            onClose={() => setDrilldownMetric(null)}
-            leads={leads}
-            branchTasks={[]}
-            dateRange={dateRange}
-            comparisonRange={prevRange}
-            branch={null}
-          />
-        )}
+        {drilldownMetric && (() => {
+          const tile = gmTiles.find((t) => t.metricKey === drilldownMetric);
+          const rawVal = tile?.value;
+          const numericCurrent = typeof rawVal === "string" ? parseFloat(rawVal) : rawVal;
+          const prevTile = {
+            conversion_rate: prevStats?.conversionRate,
+            contacted_within_30_min: prevStats?.pctWithin30,
+            comment_rate: prevStats?.commentCompliance,
+            branch_vs_hrd_split: prevStats?.branchPct,
+            cancelled_unreviewed: prevStats?.cancelledUnreviewed,
+            unused_overdue: prevStats?.unusedOverdue,
+          };
+          return (
+            <GMMetricDrilldownModal
+              metricKey={drilldownMetric}
+              onClose={() => setDrilldownMetric(null)}
+              leads={leads}
+              dateRange={dateRange}
+              comparisonRange={prevRange}
+              currentValue={numericCurrent}
+              previousValue={prevTile[drilldownMetric]}
+              selectedPresetKey={selectedPresetKey}
+              gmName={gmName}
+            />
+          );
+        })()}
       </AnimatePresence>
       {/* Home — top of overview page, same greeting and logic as BM */}
       <div id="home" className="scroll-mt-4 mb-4">
@@ -2652,27 +2807,31 @@ function GMDashboardPage({ navigateTo }) {
       </div>
 
       {/* Section 1: Work (formerly To Dos) */}
-      <div id="todos" className="scroll-mt-4 mb-8">
-        <SectionHeader title="Work" />
+      <div id="todos" className="scroll-mt-4 mb-8" data-onboarding="gm-work">
+        <SectionHeader title="Work" subtitle="Meeting prep and branch health checks at a glance." />
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <GMMeetingPrepModule
-            navigateTo={navigateTo}
-            leads={leads}
-            dateRange={dateRange}
-            reduceMotion={reduceMotion}
-          />
-          <GMLeadReviewModule
-            navigateTo={navigateTo}
-            leads={leads}
-            dateRange={dateRange}
-            reduceMotion={reduceMotion}
-          />
+          <div data-onboarding="gm-meeting-prep">
+            <GMMeetingPrepModule
+              navigateTo={navigateTo}
+              leads={leads}
+              dateRange={dateRange}
+              reduceMotion={reduceMotion}
+            />
+          </div>
+          <div data-onboarding="gm-spot-check">
+            <GMSpotCheckModule
+              navigateTo={navigateTo}
+              leads={leads}
+              dateRange={dateRange}
+              reduceMotion={reduceMotion}
+            />
+          </div>
         </div>
       </div>
 
       {/* Section 2: Summary (formerly Business Metrics) */}
-      <div id="business-metrics" className="scroll-mt-4 mb-8">
-        <SectionHeader title="Summary" />
+      <div id="business-metrics" className="scroll-mt-4 mb-8" data-onboarding="gm-summary">
+        <SectionHeader title="Summary" subtitle="Zone-wide metrics and performance trends." />
 
         {/* Time filter */}
         <div className="flex items-center gap-1.5 mb-4 flex-nowrap whitespace-nowrap overflow-x-auto">
@@ -2692,7 +2851,7 @@ function GMDashboardPage({ navigateTo }) {
         </div>
 
         {/* Metric tiles — 2 rows of 3, BM black-tile format */}
-        <div className="grid grid-cols-3 gap-2 mb-2">
+        <div className="grid grid-cols-3 gap-2 mb-2" data-onboarding="gm-metric-drilldown">
           {gmTiles.slice(0, 3).map((tile, i) => (
             <motion.div
               key={tile.label}
@@ -2755,7 +2914,7 @@ function GMDashboardPage({ navigateTo }) {
 
         {/* Interactive trend chart — same logic and design as BM Summary */}
         <motion.div {...cardAnim(3, reduceMotion)} className="mb-4">
-          <div className="border border-[var(--neutral-200)] rounded-lg bg-white shadow-[var(--shadow-md)] overflow-hidden">
+          <div className="border border-[var(--neutral-200)] rounded-lg bg-white shadow-[var(--shadow-md)] overflow-hidden" data-onboarding="gm-trends">
             <div className="px-5 pt-5 pb-4">
               <div className="flex flex-wrap items-end gap-2 mb-4">
                 <div className="shrink-0">
@@ -2950,14 +3109,21 @@ function GMDashboardPage({ navigateTo }) {
       </div>
 
       {/* Section 3: Team Performance */}
-      <div id="team-performance" className="scroll-mt-4 mb-8">
-        <SectionHeader title="Team Performance" />
-        <GMLeaderboardModule
-          navigateTo={navigateTo}
-          leads={leads}
-          dateRange={dateRange}
-          reduceMotion={reduceMotion}
-        />
+      <div id="team-performance" className="scroll-mt-4 mb-8" data-onboarding="gm-team-performance">
+        <SectionHeader title="Team Performance" subtitle="Leaderboard rankings, activity, and compliance across branches." />
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <GMLeaderboardModule
+            navigateTo={navigateTo}
+            leads={leads}
+            dateRange={dateRange}
+            reduceMotion={reduceMotion}
+          />
+          <ActivityReportModule
+            navigateTo={navigateTo}
+            leads={leads}
+            reduceMotion={reduceMotion}
+          />
+        </div>
         <div className="mt-4">
           <InteractiveComplianceDashboard />
         </div>
@@ -3046,13 +3212,13 @@ function GMTrendLineChart({ data, metricConfig, getColor, hasMultipleSeries }) {
   return (
     <div>
       <svg viewBox={`0 0 ${svgW} ${svgH}`} className="w-full overflow-visible" style={{ maxHeight: 320 }}>
-        <line x1={pad.l} y1={pad.t} x2={pad.l} y2={pad.t + plotH} stroke="#d1d5db" strokeWidth={1} />
+        <line x1={pad.l} y1={pad.t} x2={pad.l} y2={pad.t + plotH} stroke="var(--neutral-300)" strokeWidth={1} />
         {yTicks.map((val) => {
           const y = pad.t + plotH - (val / niceMax) * plotH;
           return (
             <g key={val}>
-              <line x1={pad.l} y1={y} x2={svgW - pad.r} y2={y} stroke="#e5e5e5" strokeWidth={0.5} strokeDasharray="2,2" />
-              <text x={pad.l - 6} y={y + 3} textAnchor="end" fontSize={12} fill="#6b7280">{val}{isPercent ? "%" : ""}</text>
+              <line x1={pad.l} y1={y} x2={svgW - pad.r} y2={y} stroke="var(--neutral-200)" strokeWidth={0.5} strokeDasharray="2,2" />
+              <text x={pad.l - 6} y={y + 3} textAnchor="end" fontSize={12} fill="var(--chart-neutral-dark)">{val}{isPercent ? "%" : ""}</text>
             </g>
           );
         })}
@@ -3074,7 +3240,7 @@ function GMTrendLineChart({ data, metricConfig, getColor, hasMultipleSeries }) {
                 <g key={i}>
                   <circle cx={p.x} cy={p.y} r={3} fill={color} stroke="white" strokeWidth={1.5} />
                   {!hasMultipleSeries && (
-                    <text x={p.x} y={Math.max(12, p.y - 10)} textAnchor="middle" fontSize={12} fontWeight={600} fill="#555">
+                    <text x={p.x} y={Math.max(12, p.y - 10)} textAnchor="middle" fontSize={12} fontWeight={600} fill="var(--chart-black)">
                       {p.v}{metricConfig.suffix}
                     </text>
                   )}
@@ -3085,7 +3251,7 @@ function GMTrendLineChart({ data, metricConfig, getColor, hasMultipleSeries }) {
         })}
         {data.weekLabels.map((wl, i) => {
           const x = n > 1 ? pad.l + (i / (n - 1)) * plotW : pad.l + plotW / 2;
-          return <text key={i} x={x} y={svgH - 6} textAnchor="middle" fontSize={12} fill="#6b7280">{wl}</text>;
+          return <text key={i} x={x} y={svgH - 6} textAnchor="middle" fontSize={12} fill="var(--chart-neutral-dark)">{wl}</text>;
         })}
       </svg>
     </div>
@@ -3159,9 +3325,8 @@ function AdminDashboard({ navigateTo }) {
   );
 }
 
-// BM sections in scroll order on Summary page: Home → Work → Summary → My Leads → Open Tasks
+// BM sections in scroll order on Summary page: Work → Summary → My Leads → Open Tasks
 const BM_SECTION_MAP = {
-  "bm-home": "home",
   "bm-work": "work",
   "bm-dashboard": "dashboard",
   "bm-leads": "lead-pipeline",

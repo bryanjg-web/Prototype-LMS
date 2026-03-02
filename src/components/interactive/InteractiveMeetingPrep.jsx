@@ -3,7 +3,7 @@
  * Output metrics first (unified cards), then input metrics below.
  * Completion bar = missing lead updates; click to expand and show outstanding leads.
  */
-import { useMemo, useState, useCallback } from "react";
+import { useMemo, useState, useCallback, useEffect } from "react";
 import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
 import { useAuth } from "../../context/AuthContext";
 import { useData } from "../../context/DataContext";
@@ -23,7 +23,6 @@ import {
   getNextComplianceMeetingDate,
   relChange,
 } from "../../selectors/demoSelectors";
-import { orgMapping } from "../../data/mockData";
 import MeetingPrepLeadQueue from "../MeetingPrepLeadQueue";
 import MeetingPrepLeadPanel from "./MeetingPrepLeadPanel";
 import MetricDrilldownModal from "../MetricDrilldownModal";
@@ -106,8 +105,8 @@ function MetricCard({ label, value, subtext, children, className = "", variant =
 
 export default function InteractiveMeetingPrep() {
   const { userProfile } = useAuth();
-  const { leads, refetchLeads, winsLearnings, submitWinsLearning } = useData();
-  const branch = userProfile?.branch ?? getDefaultBranchForDemo();
+  const { leads, refetchLeads, winsLearnings, submitWinsLearning, orgMapping, fetchTasksForBranch, useSupabase } = useData();
+  const branch = (userProfile?.branch?.trim() || getDefaultBranchForDemo());
 
   const [includeRented, setIncludeRented] = useState(false);
   const [panelLead, setPanelLead] = useState(null);
@@ -119,11 +118,18 @@ export default function InteractiveMeetingPrep() {
   const [wlSubmitting, setWlSubmitting] = useState(false);
   const [wlSubmitted, setWlSubmitted] = useState(false);
   const reduceMotion = useReducedMotion();
-  const branchTasks = useMemo(() => getTasksForBranch(branch), [branch]);
+  const [branchTasks, setBranchTasks] = useState([]);
+  useEffect(() => {
+    if (useSupabase && branch) {
+      fetchTasksForBranch(branch).then(setBranchTasks).catch(() => setBranchTasks([]));
+    } else {
+      setBranchTasks(getTasksForBranch(branch));
+    }
+  }, [useSupabase, branch, fetchTasksForBranch]);
   const { dateStr: meetingDateStr, daysLeft: meetingDaysLeft } = useMemo(() => getNextComplianceMeetingDate(), []);
 
   // Wins & Learnings — BM's own submissions for this branch
-  const bmName = userProfile?.name ?? "Sarah Chen";
+  const bmName = userProfile?.displayName ?? "Sarah Chen";
   const gmName = useMemo(() => orgMapping.find((r) => r.branch === branch)?.gm ?? null, [branch]);
   const myWinsLearnings = useMemo(
     () => (winsLearnings ?? []).filter((e) => e.branch === branch).sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)),
@@ -808,7 +814,6 @@ export default function InteractiveMeetingPrep() {
                 <div className="w-1.5 h-1.5 rounded-full bg-[var(--hertz-primary)] mt-2 shrink-0" />
                 <div className="min-w-0">
                   <p className="text-sm text-[var(--hertz-black)] leading-relaxed">{entry.content}</p>
-                  <p className="text-xs text-[var(--neutral-400)] mt-0.5">{entry.weekOf}</p>
                 </div>
               </div>
             ))}

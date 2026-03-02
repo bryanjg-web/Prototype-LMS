@@ -22,7 +22,15 @@ const SORT_METRICS = [
   { value: "commentRate", label: "Comment Rate", suffix: "%" },
   { value: "branchHrdPct", label: "Branch Contact %", suffix: "%" },
   { value: "total", label: "Total Leads", suffix: "" },
+  { value: "mostImproved", label: "Most Improved", suffix: " pp" },
 ];
+
+const QUARTILE_COLORS = {
+  1: { border: "border-l-emerald-500", label: "Q1", bg: "bg-emerald-50", text: "text-emerald-700" },
+  2: { border: "border-l-[var(--neutral-300)]", label: "Q2", bg: "bg-[var(--neutral-50)]", text: "text-[var(--neutral-600)]" },
+  3: { border: "border-l-[var(--neutral-300)]", label: "Q3", bg: "bg-[var(--neutral-50)]", text: "text-[var(--neutral-600)]" },
+  4: { border: "border-l-red-400", label: "Q4", bg: "bg-red-50", text: "text-red-700" },
+};
 
 const SCOPE_TABS = [
   { value: "my_branches", label: "My Branches" },
@@ -30,9 +38,9 @@ const SCOPE_TABS = [
 ];
 
 export default function InteractiveGMLeaderboardPage() {
-  const { leads } = useData();
+  const { leads, loading } = useData();
   const { navigateTo } = useApp();
-  const presets = useMemo(() => getDateRangePresets(), []);
+  const presets = useMemo(() => getDateRangePresets(), [loading]);
 
   const [selectedPresetKey, setSelectedPresetKey] = useState("this_week");
   const [sortMetric, setSortMetric] = useState("conversionRate");
@@ -173,7 +181,7 @@ export default function InteractiveGMLeaderboardPage() {
                 <th className="text-center text-white text-xs font-semibold px-4 py-3">Branch</th>
                 <th className="text-center text-white text-xs font-semibold px-4 py-3">BM</th>
                 <th className="text-center text-white text-xs font-semibold px-4 py-3">Zone</th>
-                {SORT_METRICS.map((m) => (
+                {SORT_METRICS.filter((m) => m.value !== "mostImproved").map((m) => (
                   <th
                     key={m.value}
                     onClick={() => setSortMetric(m.value)}
@@ -184,49 +192,76 @@ export default function InteractiveGMLeaderboardPage() {
                     {m.label} {sortMetric === m.value && "▼"}
                   </th>
                 ))}
+                <th
+                  onClick={() => setSortMetric("mostImproved")}
+                  className={`text-center text-xs font-semibold px-4 py-3 cursor-pointer transition-colors ${
+                    sortMetric === "mostImproved" ? "text-[var(--hertz-primary)]" : "text-white hover:text-[var(--neutral-300)]"
+                  }`}
+                >
+                  Change {sortMetric === "mostImproved" && "▼"}
+                </th>
               </tr>
             </thead>
             <tbody>
               {leaderboard.sorted.length === 0 && (
                 <tr>
-                  <td colSpan={4 + SORT_METRICS.length} className="px-4 py-8 text-center text-[var(--neutral-500)]">
+                  <td colSpan={10} className="px-4 py-8 text-center text-[var(--neutral-500)]">
                     No data for this period
                   </td>
                 </tr>
               )}
-              {leaderboard.sorted.map((row, i) => (
-                <motion.tr
-                  key={row.branch}
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: i * 0.03, duration: 0.3 }}
-                  onClick={() => setSelectedBranch(row)}
-                  className={`border-b border-[var(--neutral-100)] transition-colors hover:bg-[var(--neutral-50)] cursor-pointer ${
-                    row.isMyBranch && scope === "all" ? "bg-[var(--hertz-primary-subtle)]" : ""
-                  }`}
-                >
-                  <td className="px-4 py-3 text-center">
-                    <span className={`inline-flex items-center justify-center w-6 h-6 rounded-full text-xs font-bold ${
-                      row.rank <= 3 ? "bg-[var(--hertz-primary)] text-[var(--hertz-black)]" : "bg-[var(--neutral-100)] text-[var(--neutral-600)]"
-                    }`}>
-                      {row.rank}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3 text-center font-medium text-[var(--hertz-black)]">{row.branch}</td>
-                  <td className="px-4 py-3 text-center text-[var(--neutral-600)]">{row.bmName}</td>
-                  <td className="px-4 py-3 text-center text-[var(--neutral-600)]">{row.zone}</td>
-                  {SORT_METRICS.map((m) => {
-                    const val = row[m.value];
-                    return (
-                      <td key={m.value} className={`px-4 py-3 text-center font-medium ${
-                        m.value === sortMetric ? "text-[var(--hertz-black)]" : "text-[var(--neutral-600)]"
-                      }`}>
-                        {val != null ? `${val}${m.suffix}` : "—"}
-                      </td>
-                    );
-                  })}
-                </motion.tr>
-              ))}
+              {leaderboard.sorted.map((row, i) => {
+                const qStyle = QUARTILE_COLORS[row.quartile] ?? {};
+                return (
+                  <motion.tr
+                    key={row.branch}
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: i * 0.03, duration: 0.3 }}
+                    onClick={() => setSelectedBranch(row)}
+                    className={`border-b border-[var(--neutral-100)] transition-colors hover:bg-[var(--neutral-50)] cursor-pointer border-l-3 ${qStyle.border ?? ""} ${
+                      row.isMyBranch && scope === "all" ? "bg-[var(--hertz-primary-subtle)]" : ""
+                    }`}
+                  >
+                    <td className="px-4 py-3 text-center">
+                      <div className="flex items-center justify-center gap-1.5">
+                        <span className={`inline-flex items-center justify-center w-6 h-6 rounded-full text-xs font-bold ${
+                          row.rank <= 3 ? "bg-[var(--hertz-primary)] text-[var(--hertz-black)]" : "bg-[var(--neutral-100)] text-[var(--neutral-600)]"
+                        }`}>
+                          {row.rank}
+                        </span>
+                        {row.quartile && (
+                          <span className={`text-[10px] font-semibold px-1 py-0.5 rounded ${qStyle.bg} ${qStyle.text}`}>
+                            {qStyle.label}
+                          </span>
+                        )}
+                      </div>
+                    </td>
+                    <td className="px-4 py-3 text-center font-medium text-[var(--hertz-black)]">{row.branch}</td>
+                    <td className="px-4 py-3 text-center text-[var(--neutral-600)]">{row.bmName}</td>
+                    <td className="px-4 py-3 text-center text-[var(--neutral-600)]">{row.zone}</td>
+                    {SORT_METRICS.filter((m) => m.value !== "mostImproved").map((m) => {
+                      const val = row[m.value];
+                      return (
+                        <td key={m.value} className={`px-4 py-3 text-center font-medium ${
+                          m.value === sortMetric ? "text-[var(--hertz-black)]" : "text-[var(--neutral-600)]"
+                        }`}>
+                          {val != null ? `${val}${m.suffix}` : "—"}
+                        </td>
+                      );
+                    })}
+                    <td className="px-4 py-3 text-center">
+                      {row.improvementDelta != null ? (
+                        <span className={`text-xs font-semibold ${
+                          row.improvementDelta > 0 ? "text-emerald-700" : row.improvementDelta < 0 ? "text-red-700" : "text-[var(--neutral-500)]"
+                        }`}>
+                          {row.improvementDelta > 0 ? "+" : ""}{row.improvementDelta} pp
+                        </span>
+                      ) : "—"}
+                    </td>
+                  </motion.tr>
+                );
+              })}
             </tbody>
           </table>
         </div>

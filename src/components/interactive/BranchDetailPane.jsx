@@ -6,11 +6,10 @@ import { useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import StatusBadge from "../StatusBadge";
 import { getLeadsForBranchInRange } from "../../selectors/demoSelectors";
+import { formatDateRange } from "../../utils/dateTime";
 
-function formatDateRange(dateRange) {
-  if (!dateRange?.start || !dateRange?.end) return "";
-  const fmt = (d) => d.toLocaleDateString("en-AU", { month: "short", day: "numeric" });
-  return `${fmt(dateRange.start)} – ${fmt(dateRange.end)}`;
+function formatDateRangeDisplay(dateRange) {
+  return formatDateRange(dateRange?.start, dateRange?.end) || "";
 }
 
 export default function BranchDetailPane({ branchRow, dateRange, leads, onClose }) {
@@ -55,7 +54,7 @@ export default function BranchDetailPane({ branchRow, dateRange, leads, onClose 
                 {branchRow.branch} — Line-level data
               </h2>
               <p className="text-xs text-[var(--neutral-600)] mt-0.5">
-                {branchRow.bmName} · {branchRow.zone} · {formatDateRange(dateRange)}
+                {branchRow.bmName} · {branchRow.zone} · {formatDateRangeDisplay(dateRange)}
               </p>
             </div>
             <button

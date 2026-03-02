@@ -95,7 +95,7 @@ export default function ConversionTrendChart({
   const controlsRow = (
     <div className="px-4 py-3 border-b border-[var(--neutral-200)] flex flex-wrap items-center gap-4 bg-white">
       <div className="flex items-center gap-2">
-        <label htmlFor="conv-trend-metric" className="text-[11px] font-semibold text-[var(--neutral-600)]">
+        <label htmlFor="conv-trend-metric" className="text-xs font-semibold text-[var(--neutral-600)]">
           Metric
         </label>
         <select
@@ -113,7 +113,7 @@ export default function ConversionTrendChart({
         </select>
       </div>
       <div className="flex items-center gap-2">
-        <label htmlFor="conv-trend-timeframe" className="text-[11px] font-semibold text-[var(--neutral-600)]">
+        <label htmlFor="conv-trend-timeframe" className="text-xs font-semibold text-[var(--neutral-600)]">
           Time frame
         </label>
         <select
@@ -146,7 +146,7 @@ export default function ConversionTrendChart({
         ))}
       </div>
       <div className="flex items-center gap-2">
-        <label htmlFor="conv-trend-group" className="text-[11px] font-semibold text-[var(--neutral-600)]">
+        <label htmlFor="conv-trend-group" className="text-xs font-semibold text-[var(--neutral-600)]">
           Cut by
         </label>
         <select
@@ -264,7 +264,7 @@ function BarView({ data, width, reduceMotion }) {
               x={PADDING.left - 8}
               y={PADDING.top + chartH - (tick / 100) * chartH + 4}
               textAnchor="end"
-              className="text-[11px] fill-[var(--neutral-600)]"
+              className="text-xs fill-[var(--neutral-600)]"
             >
               {tick}%
             </text>
@@ -276,7 +276,7 @@ function BarView({ data, width, reduceMotion }) {
             x={PADDING.left + wi * barGroupWidth + barGroupWidth / 2}
             y={CHART_HEIGHT - 8}
             textAnchor="middle"
-            className="text-[11px] fill-[var(--neutral-600)]"
+            className="text-xs fill-[var(--neutral-600)]"
           >
             {label}
           </text>
@@ -318,7 +318,7 @@ function BarView({ data, width, reduceMotion }) {
                 className="w-3 h-3 rounded-sm shrink-0"
                 style={{ backgroundColor: SERIES_COLORS[i % SERIES_COLORS.length] }}
               />
-              <span className="text-[11px] text-[var(--neutral-600)]">{s.name}</span>
+              <span className="text-xs text-[var(--neutral-600)]">{s.name}</span>
             </div>
           ))}
         </div>
@@ -364,13 +364,13 @@ function LineView({ data, width, toX, toY, stepX, hoveredPoint, setHoveredPoint,
               stroke="var(--neutral-200)"
               strokeDasharray="3 3"
             />
-            <text x={PADDING.left - 8} y={toY(tick) + 4} textAnchor="end" className="text-[11px] fill-[var(--neutral-600)]">
+            <text x={PADDING.left - 8} y={toY(tick) + 4} textAnchor="end" className="text-xs fill-[var(--neutral-600)]">
               {tick}%
             </text>
           </g>
         ))}
         {weekLabels.map((label, i) => (
-          <text key={i} x={toX(i)} y={CHART_HEIGHT - 8} textAnchor="middle" className="text-[11px] fill-[var(--neutral-600)]">
+          <text key={i} x={toX(i)} y={CHART_HEIGHT - 8} textAnchor="middle" className="text-xs fill-[var(--neutral-600)]">
             {label}
           </text>
         ))}
@@ -427,7 +427,7 @@ function LineView({ data, width, toX, toY, stepX, hoveredPoint, setHoveredPoint,
                 className="w-3 h-3 rounded-sm shrink-0"
                 style={{ backgroundColor: SERIES_COLORS[i % SERIES_COLORS.length] }}
               />
-              <span className="text-[11px] text-[var(--neutral-600)]">{s.name}</span>
+              <span className="text-xs text-[var(--neutral-600)]">{s.name}</span>
             </div>
           ))}
         </div>
@@ -520,7 +520,7 @@ function ComboView({ data, width, metric, hoveredPoint, setHoveredPoint, reduceM
                 x={pad.left - 8}
                 y={y + 4}
                 textAnchor="end"
-                className="text-[11px] fill-[var(--neutral-600)]"
+                className="text-xs fill-[var(--neutral-600)]"
               >
                 {tick}
               </text>
@@ -536,7 +536,7 @@ function ComboView({ data, width, metric, hoveredPoint, setHoveredPoint, reduceM
                 x={width - pad.right + 8}
                 y={y + 4}
                 textAnchor="start"
-                className="text-[11px] fill-[var(--color-success)]"
+                className="text-xs fill-[var(--color-success)]"
               >
                 {tick}%
               </text>
@@ -550,7 +550,7 @@ function ComboView({ data, width, metric, hoveredPoint, setHoveredPoint, reduceM
             x={toX(i)}
             y={CHART_HEIGHT - 8}
             textAnchor="middle"
-            className="text-[11px] fill-[var(--neutral-600)]"
+            className="text-xs fill-[var(--neutral-600)]"
           >
             {label}
           </text>
@@ -630,11 +630,11 @@ function ComboView({ data, width, metric, hoveredPoint, setHoveredPoint, reduceM
       <div className="flex flex-wrap gap-4 mt-3 pt-3 border-t border-[var(--neutral-200)]">
         <div className="flex items-center gap-1.5">
           <div className="w-3 h-3 rounded-sm shrink-0 bg-[var(--hertz-primary)] opacity-60" />
-          <span className="text-[11px] text-[var(--neutral-600)]">Leads (count)</span>
+          <span className="text-xs text-[var(--neutral-600)]">Leads (count)</span>
         </div>
         <div className="flex items-center gap-1.5">
           <div className="w-3 h-3 rounded-sm shrink-0 bg-[var(--color-success)]" />
-          <span className="text-[11px] text-[var(--neutral-600)]">{rateLabel} (%)</span>
+          <span className="text-xs text-[var(--neutral-600)]">{rateLabel} (%)</span>
         </div>
       </div>
       {hoveredPoint !== null && (

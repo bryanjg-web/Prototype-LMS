@@ -3,6 +3,41 @@ import { motion, AnimatePresence } from "framer-motion";
 import { parseHlesCsv, parseTranslogCsv } from "../../utils/csvParsers";
 import { reconcileHlesUpload, reconcileTranslogUpload, buildCommitPlan } from "../../utils/reconciliation";
 import { leads as mockLeads } from "../../data/mockData";
+import { useData } from "../../context/DataContext";
+import {
+  createUploadRecord,
+  commitHlesUpload,
+  commitTranslogUpload,
+  updateOrgMappingFromHles,
+  cleanupStaleSeedBranches,
+  applyCodeMappings,
+  updateUploadRecord,
+  insertUploadSummary,
+  fetchLeads,
+} from "../../data/supabaseData";
+
+// ---------------------------------------------------------------------------
+// CSV export helper
+// ---------------------------------------------------------------------------
+function exportToCsv(filename, headers, rows) {
+  const escape = (val) => {
+    const str = String(val ?? "");
+    return str.includes(",") || str.includes('"') || str.includes("\n")
+      ? `"${str.replace(/"/g, '""')}"`
+      : str;
+  };
+  const lines = [headers.map(escape).join(",")];
+  for (const row of rows) {
+    lines.push(row.map(escape).join(","));
+  }
+  const blob = new Blob([lines.join("\n")], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+}
 
 // ---------------------------------------------------------------------------
 // Step indicator
@@ -173,7 +208,7 @@ function ValidationCard({ title, stats, errors, isLoading }) {
             <svg className={`w-3 h-3 transition-transform ${showErrors ? "rotate-90" : ""}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
             </svg>
-            {errors.length} validation error{errors.length !== 1 ? "s" : ""}
+            {errors.length} row{errors.length !== 1 ? "s" : ""} skipped due to missing or invalid data
           </button>
           <AnimatePresence>
             {showErrors && (
@@ -183,7 +218,10 @@ function ValidationCard({ title, stats, errors, isLoading }) {
                 exit={{ height: 0, opacity: 0 }}
                 className="overflow-hidden"
               >
-                <div className="mt-2 max-h-32 overflow-y-auto space-y-1">
+                <p className="text-xs text-[#C62828] opacity-80 mt-2 mb-1">
+                  These rows were excluded from the upload. Fix the issues in your CSV file and re-upload to include them.
+                </p>
+                <div className="max-h-32 overflow-y-auto space-y-1">
                   {errors.map((err, i) => (
                     <p key={i} className="text-xs text-[#C62828] font-mono">{err}</p>
                   ))}
@@ -219,31 +257,31 @@ function PreviewTable({ reconciliation }) {
 
   const tabs = [
     { key: "all", label: "All", count: summary.total },
-    { key: "new", label: "New", count: summary.new, color: "text-[#2E7D32]" },
+    { key: "new", label: "New", count: summary.new },
     { key: "updated", label: "Updated", count: summary.updated },
-    { key: "conflicts", label: "Conflicts", count: summary.conflicts, color: "text-[#E65100]" },
-    { key: "orphaned", label: "Orphaned", count: summary.orphaned, color: "text-[#C62828]" },
+    { key: "conflicts", label: "Conflicts", count: summary.conflicts, color: summary.conflicts > 0 ? "text-[#E65100]" : "" },
+    { key: "orphaned", label: "Orphaned", count: summary.orphaned, color: summary.orphaned > 0 ? "text-[#E65100]" : "" },
   ];
 
   const displayItems = items[activeTab] || [];
   const categoryColors = {
-    new: "bg-[#E8F5E9] text-[#2E7D32]",
-    updated: "bg-[#E3F2FD] text-[#1565C0]",
+    new: "bg-[var(--neutral-100)] text-[var(--neutral-600)]",
+    updated: "bg-[var(--neutral-100)] text-[var(--neutral-600)]",
     conflict: "bg-[#FFF3E0] text-[#E65100]",
     unchanged: "bg-[var(--neutral-100)] text-[var(--neutral-500)]",
-    orphaned: "bg-[#FFEBEE] text-[#C62828]",
+    orphaned: "bg-[#FFF3E0] text-[#E65100]",
   };
 
   return (
     <div>
       {/* Summary tiles */}
-      <div className="grid grid-cols-5 gap-3 mb-5">
+      <div className="grid grid-cols-5 gap-3 mb-2">
         {[
-          { label: "Total Rows", value: summary.total, bg: "bg-[var(--hertz-black)]", text: "text-white" },
-          { label: "New Leads", value: summary.new, bg: "bg-[#E8F5E9]", text: "text-[#2E7D32]" },
-          { label: "Updated", value: summary.updated, bg: "bg-[#E3F2FD]", text: "text-[#1565C0]" },
-          { label: "Conflicts", value: summary.conflicts, bg: "bg-[#FFF3E0]", text: "text-[#E65100]" },
-          { label: "Orphaned", value: summary.orphaned, bg: "bg-[#FFEBEE]", text: "text-[#C62828]" },
+          { label: "Total Rows", value: summary.total, bg: "bg-[var(--neutral-100)]", text: "text-[var(--hertz-black)]" },
+          { label: "New Leads", value: summary.new, bg: "bg-[var(--neutral-100)]", text: "text-[var(--hertz-black)]" },
+          { label: "Updated", value: summary.updated, bg: "bg-[var(--neutral-100)]", text: "text-[var(--hertz-black)]" },
+          { label: "Conflicts", value: summary.conflicts, bg: summary.conflicts > 0 ? "bg-[#FFF3E0] alert-pulse" : "bg-[var(--neutral-100)]", text: summary.conflicts > 0 ? "text-[#E65100]" : "text-[var(--hertz-black)]" },
+          { label: "Orphaned", value: summary.orphaned, bg: summary.orphaned > 0 ? "bg-[#FFF3E0] alert-pulse" : "bg-[var(--neutral-100)]", text: summary.orphaned > 0 ? "text-[#E65100]" : "text-[var(--hertz-black)]" },
         ].map((tile) => (
           <div key={tile.label} className={`${tile.bg} rounded-lg p-3`}>
             <p className={`text-2xl font-bold ${tile.text}`}>{tile.value}</p>
@@ -251,6 +289,20 @@ function PreviewTable({ reconciliation }) {
           </div>
         ))}
       </div>
+      {(summary.conflicts > 0 || summary.orphaned > 0) && (
+        <div className="mb-5 space-y-1">
+          {summary.conflicts > 0 && (
+            <p className="text-xs text-[#E65100]">
+              {summary.conflicts} lead{summary.conflicts !== 1 ? "s have" : " has"} conflicting data between BM comments and this upload. Resolve each conflict below before committing.
+            </p>
+          )}
+          {summary.orphaned > 0 && (
+            <p className="text-xs text-[#E65100]">
+              {summary.orphaned} lead{summary.orphaned !== 1 ? "s exist" : " exists"} in the database but not in this upload. Choose to keep, archive, or remove them below.
+            </p>
+          )}
+        </div>
+      )}
 
       {/* Tabs */}
       <div className="flex gap-1 mb-4 border-b border-[var(--neutral-200)]">
@@ -371,7 +423,7 @@ function ConflictResolver({ conflicts, resolutions, onResolve }) {
             className={`border rounded-lg p-4 ${
               resolution
                 ? "border-[var(--neutral-200)] bg-[var(--neutral-50)]"
-                : "border-[#E65100] bg-[#FFF3E0]"
+                : "border-[#E65100] bg-[#FFF3E0] alert-pulse"
             }`}
           >
             <div className="flex items-start justify-between mb-3">
@@ -429,6 +481,206 @@ function ConflictResolver({ conflicts, resolutions, onResolve }) {
 }
 
 // ---------------------------------------------------------------------------
+// TRANSLOG expandable detail panel
+// ---------------------------------------------------------------------------
+function TranslogDetailPanel({ reconciliation }) {
+  const [expanded, setExpanded] = useState(null); // "total" | "matched" | "orphan" | null
+  const { summary, matched, orphanEvents } = reconciliation;
+
+  const allEvents = useMemo(() => {
+    const events = [];
+    for (const m of matched) {
+      for (const e of m.events) events.push({ ...e, matchedLead: m.lead.customer || m.lead.reservationId });
+    }
+    for (const o of orphanEvents) {
+      for (const e of o.events) events.push({ ...e, matchedLead: null });
+    }
+    return events;
+  }, [matched, orphanEvents]);
+
+  const hasOrphans = summary.orphanEventCount > 0;
+  const tiles = [
+    { key: "total", label: "Events Parsed", value: summary.totalEvents },
+    { key: "matched", label: "Matched to Leads", value: summary.matchedEvents },
+    { key: "orphan", label: "Unmatched Events", value: summary.orphanEventCount, warn: hasOrphans },
+  ];
+
+  const toggle = (key) => setExpanded(expanded === key ? null : key);
+
+  return (
+    <div className="border border-[var(--neutral-200)] rounded-lg overflow-hidden">
+      <p className="text-sm font-semibold text-[var(--hertz-black)] px-5 pt-5 pb-3">TRANSLOG Activity Summary</p>
+
+      <div className="grid grid-cols-3 gap-3 px-5 pb-2">
+        {tiles.map((t) => (
+          <button
+            key={t.key}
+            onClick={() => toggle(t.key)}
+            className={`rounded-lg p-3 text-left cursor-pointer transition-all hover:ring-2 hover:ring-[var(--neutral-300)] ${
+              t.warn ? "bg-[#FFF3E0] alert-pulse" : "bg-[var(--neutral-100)]"
+            } ${expanded === t.key ? "ring-2 ring-[var(--hertz-primary)]" : ""}`}
+          >
+            <p className={`text-2xl font-bold ${t.warn ? "text-[#E65100]" : "text-[var(--hertz-black)]"}`}>{t.value.toLocaleString()}</p>
+            <p className={`text-xs ${t.warn ? "text-[#E65100] opacity-70" : "text-[var(--neutral-500)]"}`}>{t.label}</p>
+          </button>
+        ))}
+      </div>
+      {hasOrphans && (
+        <p className="text-xs text-[#E65100] px-5 pb-4">
+          {summary.orphanEventCount.toLocaleString()} event{summary.orphanEventCount !== 1 ? "s" : ""} could not be matched to any lead.
+          These events will be skipped during commit. Check that the CONFIRM_NUM values in this file match your HLES data.
+        </p>
+      )}
+
+      <AnimatePresence>
+        {expanded === "total" && allEvents.length > 0 && (
+          <motion.div key="total-detail" initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="overflow-hidden">
+            <div className="border-t border-[var(--neutral-200)] max-h-72 overflow-y-auto">
+              <table className="w-full text-xs">
+                <thead className="bg-[var(--hertz-black)] text-white sticky top-0">
+                  <tr>
+                    <th className="px-3 py-2 text-left font-medium">CONFIRM_NUM</th>
+                    <th className="px-3 py-2 text-left font-medium">Event Type</th>
+                    <th className="px-3 py-2 text-left font-medium">Date</th>
+                    <th className="px-3 py-2 text-left font-medium">Employee</th>
+                    <th className="px-3 py-2 text-left font-medium">Summary</th>
+                    <th className="px-3 py-2 text-left font-medium">Matched Lead</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {allEvents.slice(0, 200).map((e, i) => (
+                    <tr key={i} className="border-t border-[var(--neutral-100)] hover:bg-[var(--neutral-50)]">
+                      <td className="px-3 py-2 font-mono">{e.confirmNum || e.knum || "—"}</td>
+                      <td className="px-3 py-2">{e.eventTypeLabel || "—"}</td>
+                      <td className="px-3 py-2">{e.systemDate || "—"}</td>
+                      <td className="px-3 py-2">{e.empName || "—"}</td>
+                      <td className="px-3 py-2 max-w-[200px] truncate">{e.msgSummary || "—"}</td>
+                      <td className="px-3 py-2">{e.matchedLead || <span className="text-[var(--neutral-400)]">—</span>}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              {allEvents.length > 200 && (
+                <div className="px-3 py-2 bg-[var(--neutral-50)] text-xs text-[var(--neutral-500)] text-center">
+                  Showing first 200 of {allEvents.length.toLocaleString()} events
+                </div>
+              )}
+            </div>
+          </motion.div>
+        )}
+
+        {expanded === "matched" && (
+          <motion.div key="matched-detail" initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="overflow-hidden">
+            <div className="border-t border-[var(--neutral-200)] max-h-72 overflow-y-auto">
+              {matched.length === 0 ? (
+                <p className="px-5 py-6 text-sm text-[var(--neutral-400)] text-center">No events matched to existing leads.</p>
+              ) : (
+                <>
+                  <table className="w-full text-xs">
+                    <thead className="bg-[var(--hertz-black)] text-white sticky top-0">
+                      <tr>
+                        <th className="px-3 py-2 text-left font-medium">Lead</th>
+                        <th className="px-3 py-2 text-left font-medium">Reservation ID</th>
+                        <th className="px-3 py-2 text-left font-medium">Branch</th>
+                        <th className="px-3 py-2 text-right font-medium">Events</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {[...matched]
+                        .sort((a, b) => b.newEventCount - a.newEventCount)
+                        .slice(0, 100)
+                        .map((m, i) => (
+                        <tr key={i} className="border-t border-[var(--neutral-100)] hover:bg-[var(--neutral-50)]">
+                          <td className="px-3 py-2">{m.lead.customer || "—"}</td>
+                          <td className="px-3 py-2 font-mono">{m.lead.reservationId || m.lead.confirmNum || "—"}</td>
+                          <td className="px-3 py-2">{m.lead.branch || "—"}</td>
+                          <td className="px-3 py-2 text-right font-semibold">{m.newEventCount}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                  {matched.length > 100 && (
+                    <div className="px-3 py-2 bg-[var(--neutral-50)] text-xs text-[var(--neutral-500)] text-center">
+                      Showing first 100 of {matched.length} leads
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+          </motion.div>
+        )}
+
+        {expanded === "orphan" && (
+          <motion.div key="orphan-detail" initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="overflow-hidden">
+            <div className="border-t border-[var(--neutral-200)] max-h-72 overflow-y-auto">
+              {orphanEvents.length === 0 ? (
+                <p className="px-5 py-6 text-sm text-[var(--neutral-400)] text-center">All events matched to existing leads.</p>
+              ) : (
+                <>
+                  <table className="w-full text-xs">
+                    <thead className="bg-[var(--hertz-black)] text-white sticky top-0">
+                      <tr>
+                        <th className="px-3 py-2 text-left font-medium">CONFIRM_NUM / Knum</th>
+                        <th className="px-3 py-2 text-right font-medium">Events</th>
+                        <th className="px-3 py-2 text-left font-medium">Last Event Type</th>
+                        <th className="px-3 py-2 text-left font-medium">Last Date</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {[...orphanEvents]
+                        .sort((a, b) => b.eventCount - a.eventCount)
+                        .slice(0, 100)
+                        .map((o, i) => {
+                        const lastEvent = o.events[o.events.length - 1];
+                        return (
+                          <tr key={i} className="border-t border-[var(--neutral-100)] hover:bg-[var(--neutral-50)]">
+                            <td className="px-3 py-2 font-mono">{o.key}</td>
+                            <td className="px-3 py-2 text-right">{o.eventCount}</td>
+                            <td className="px-3 py-2">{lastEvent?.eventTypeLabel || "—"}</td>
+                            <td className="px-3 py-2">{lastEvent?.systemDate || "—"}</td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                  {orphanEvents.length > 100 && (
+                    <div className="px-3 py-2 bg-[var(--neutral-50)] text-xs text-[var(--neutral-500)] text-center">
+                      Showing first 100 of {orphanEvents.length} unmatched keys
+                    </div>
+                  )}
+                  <div className="px-3 py-2 border-t border-[var(--neutral-100)]">
+                    <button
+                      onClick={() => {
+                        const rows = orphanEvents.flatMap((o) =>
+                          o.events.map((e) => [
+                            e.confirmNum || e.knum || o.key,
+                            e.eventTypeLabel || "",
+                            e.systemDate || "",
+                            e.empName || "",
+                            e.msgSummary || "",
+                          ]),
+                        );
+                        exportToCsv("unmatched-translog-events.csv", ["CONFIRM_NUM", "Event Type", "Date", "Employee", "Summary"], rows);
+                      }}
+                      className="w-full py-1.5 text-xs font-medium text-[var(--neutral-600)] hover:text-[var(--hertz-black)] cursor-pointer flex items-center justify-center gap-1.5"
+                    >
+                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                      </svg>
+                      Export all {orphanEvents.reduce((s, o) => s + o.eventCount, 0).toLocaleString()} unmatched events as CSV
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Orphan action selector
 // ---------------------------------------------------------------------------
 function OrphanActionSelector({ orphanedLeads, orphanAction, onOrphanAction }) {
@@ -439,25 +691,31 @@ function OrphanActionSelector({ orphanedLeads, orphanAction, onOrphanAction }) {
       <p className="text-sm font-semibold text-[var(--hertz-black)] mb-1">
         {orphanedLeads.length} Orphaned Lead{orphanedLeads.length !== 1 ? "s" : ""}
       </p>
+      <p className="text-xs text-[var(--neutral-500)] mb-1">
+        These leads exist in the database but were not in this HLES upload.
+        This usually means they've fallen outside the rolling 8-week reporting window.
+      </p>
       <p className="text-xs text-[var(--neutral-500)] mb-4">
-        These leads exist in the database but were not found in the new HLES upload.
-        They may have fallen outside the rolling 8-week window.
+        Choose what to do with them before committing.
       </p>
       <div className="flex gap-2">
         {[
-          { value: "keep", label: "Keep As-Is", desc: "Leave in database unchanged" },
-          { value: "archive", label: "Archive All", desc: "Mark as archived" },
+          { value: "keep", label: "Keep As-Is", desc: "No changes — leads stay active in BM and GM views" },
+          { value: "archive", label: "Archive All", desc: "Hide from active views but preserve data for reporting" },
+          { value: "delete", label: "Remove All", desc: "Permanently delete — this cannot be undone", destructive: true },
         ].map((opt) => (
           <button
             key={opt.value}
             onClick={() => onOrphanAction(opt.value)}
             className={`flex-1 p-3 rounded-lg border text-left transition-colors cursor-pointer ${
               orphanAction === opt.value
-                ? "border-[var(--hertz-black)] bg-[var(--neutral-50)]"
+                ? opt.destructive
+                  ? "border-[#C62828] bg-[#FFEBEE]"
+                  : "border-[var(--hertz-black)] bg-[var(--neutral-50)]"
                 : "border-[var(--neutral-200)] hover:border-[var(--neutral-400)]"
             }`}
           >
-            <p className="text-sm font-medium text-[var(--hertz-black)]">{opt.label}</p>
+            <p className={`text-sm font-medium ${opt.destructive && orphanAction === opt.value ? "text-[#C62828]" : "text-[var(--hertz-black)]"}`}>{opt.label}</p>
             <p className="text-xs text-[var(--neutral-500)]">{opt.desc}</p>
           </button>
         ))}
@@ -470,6 +728,8 @@ function OrphanActionSelector({ orphanedLeads, orphanAction, onOrphanAction }) {
 // Main Upload Wizard
 // ---------------------------------------------------------------------------
 export default function InteractiveUploads() {
+  const { leads: contextLeads, refetchLeads, refetchOrgMapping, refetchDataAsOfDate, useSupabase } = useData();
+
   const [step, setStep] = useState("select");
   const [hlesFile, setHlesFile] = useState(null);
   const [translogFile, setTranslogFile] = useState(null);
@@ -490,12 +750,14 @@ export default function InteractiveUploads() {
   // Commit
   const [committing, setCommitting] = useState(false);
   const [commitResult, setCommitResult] = useState(null);
+  const [commitError, setCommitError] = useState(null);
+  const [commitProgress, setCommitProgress] = useState({ phase: "", pct: 0, detail: "" });
 
-  // Use mock leads for reconciliation comparison (prototype)
-  const existingLeads = useMemo(
-    () => mockLeads.map((l) => ({ ...l, confirmNum: l.reservationId })),
-    [],
-  );
+  // Use Supabase leads when available, fall back to mock leads
+  const existingLeads = useMemo(() => {
+    const source = useSupabase && contextLeads.length > 0 ? contextLeads : mockLeads;
+    return source.map((l) => ({ ...l, confirmNum: l.confirmNum || l.reservationId }));
+  }, [useSupabase, contextLeads]);
 
   // ---- Step: Validate ----
   const handleValidate = useCallback(async () => {
@@ -521,7 +783,13 @@ export default function InteractiveUploads() {
         setHlesReconciliation(recon);
       }
       if (tResult?.eventsByLead?.size) {
-        const recon = reconcileTranslogUpload(tResult.eventsByLead, existingLeads);
+        // When HLES + TRANSLOG are uploaded together, include the newly parsed
+        // HLES leads so TRANSLOG events can match against them (they aren't in
+        // the DB yet at validate time).
+        const leadsForTranslog = hResult?.leads?.length
+          ? [...existingLeads, ...hResult.leads.map((l) => ({ ...l, confirmNum: l.confirmNum || l.reservationId }))]
+          : existingLeads;
+        const recon = reconcileTranslogUpload(tResult.eventsByLead, leadsForTranslog);
         setTranslogReconciliation(recon);
       }
     } catch (err) {
@@ -536,38 +804,200 @@ export default function InteractiveUploads() {
   // ---- Step: Commit ----
   const handleCommit = useCallback(async () => {
     setCommitting(true);
+    setCommitError(null);
     setStep("commit");
 
-    // Build commit plan
     const plan = hlesReconciliation
       ? buildCommitPlan(hlesReconciliation, conflictResolutions, orphanAction)
       : { inserts: [], updates: [], archives: [], skips: [] };
 
-    // For prototype: simulate commit with a delay
-    await new Promise((r) => setTimeout(r, 1500));
+    if (!useSupabase) {
+      // Mock mode: simulate commit with a delay
+      await new Promise((r) => setTimeout(r, 1500));
+      setCommitResult({
+        hles: {
+          inserted: plan.inserts.length,
+          updated: plan.updates.length,
+          archived: plan.archives.length,
+          skipped: plan.skips.length,
+        },
+        translog: translogReconciliation
+          ? {
+              matchedLeads: translogReconciliation.summary.matchedLeads,
+              matchedEvents: translogReconciliation.summary.matchedEvents,
+              orphanKeys: translogReconciliation.summary.orphanKeys,
+            }
+          : null,
+        orgMapping: hlesParsed?.orgRows?.length
+          ? { branchesFound: hlesParsed.orgRows.length }
+          : null,
+      });
+      setCommitting(false);
+      setStep("summary");
+      return;
+    }
 
-    setCommitResult({
-      hles: {
-        inserted: plan.inserts.length,
-        updated: plan.updates.length,
-        archived: plan.archives.length,
-        skipped: plan.skips.length,
-      },
-      translog: translogReconciliation
-        ? {
-            matchedLeads: translogReconciliation.summary.matchedLeads,
-            matchedEvents: translogReconciliation.summary.matchedEvents,
-            orphanKeys: translogReconciliation.summary.orphanKeys,
-          }
-        : null,
-      orgMapping: hlesParsed?.orgRows
-        ? { branchesFound: hlesParsed.orgRows.length }
-        : null,
-    });
+    // --- Supabase mode: persist for real ---
+    const totalPhases = [
+      hlesFile && "hles",
+      translogFile && translogReconciliation?.matched?.length && "translog",
+      hlesParsed?.orgRows?.length && "org",
+    ].filter(Boolean).length + 2; // +2 for "record" and "refresh"
+    let phaseIdx = 0;
 
-    setCommitting(false);
-    setStep("summary");
-  }, [hlesReconciliation, translogReconciliation, conflictResolutions, orphanAction, hlesParsed]);
+    const advancePhase = (phase, detail = "") => {
+      phaseIdx++;
+      const pct = Math.round((phaseIdx / totalPhases) * 100);
+      setCommitProgress({ phase, pct: Math.min(pct, 95), detail });
+    };
+
+    try {
+      let hlesUpload = null;
+      let translogUpload = null;
+      let hlesResult = null;
+      let translogResult = null;
+      let orgResult = null;
+
+      setCommitProgress({ phase: "Creating upload records", pct: 5, detail: "" });
+
+      if (hlesFile) {
+        hlesUpload = await createUploadRecord({
+          uploadType: "hles",
+          fileName: hlesFile.name,
+          uploadedByName: "Admin",
+        });
+      }
+      if (translogFile) {
+        translogUpload = await createUploadRecord({
+          uploadType: "translog",
+          fileName: translogFile.name,
+          uploadedByName: "Admin",
+        });
+      }
+
+      if (hlesUpload && hlesReconciliation) {
+        advancePhase("Committing HLES leads");
+        hlesResult = await commitHlesUpload(hlesUpload.id, plan, ({ label }) => {
+          setCommitProgress((prev) => ({ ...prev, detail: label }));
+        });
+        if (hlesResult.errors.length > 0) {
+          console.error("[Upload] HLES commit errors:", hlesResult.errors);
+        }
+      }
+
+      if (translogUpload && translogReconciliation?.matched?.length) {
+        advancePhase("Committing TRANSLOG events");
+
+        // When HLES + TRANSLOG are uploaded together, the matched leads from
+        // reconciliation have parsed HLES objects without database IDs.
+        // Re-reconcile against freshly committed leads to get real IDs.
+        let matchedForCommit = translogReconciliation.matched;
+        const hasLeadsWithoutIds = matchedForCommit.some((m) => !m.lead.id);
+        if (hasLeadsWithoutIds && translogParsed?.eventsByLead) {
+          setCommitProgress((prev) => ({ ...prev, detail: "Resolving lead IDs from database" }));
+          const freshLeads = await fetchLeads();
+          const freshRecon = reconcileTranslogUpload(translogParsed.eventsByLead, freshLeads);
+          matchedForCommit = freshRecon.matched;
+        }
+
+        translogResult = await commitTranslogUpload(
+          translogUpload.id,
+          matchedForCommit,
+          ({ label }) => {
+            setCommitProgress((prev) => ({ ...prev, detail: label }));
+          },
+        );
+        await updateUploadRecord(translogUpload.id, {
+          status: "completed",
+          rowCount: translogReconciliation.summary.totalEvents,
+          updatedCount: translogResult.updated,
+        });
+        if (translogResult.errors.length > 0) {
+          console.error("[Upload] TRANSLOG commit errors:", translogResult.errors);
+        }
+      }
+
+      if (hlesParsed?.orgRows?.length) {
+        advancePhase("Updating org mapping", `${hlesParsed.orgRows.length} branches`);
+        orgResult = await updateOrgMappingFromHles(
+          hlesParsed.orgRows,
+          hlesUpload?.id ?? null,
+        );
+        if (orgResult.errors.length > 0) {
+          console.error("[Upload] Org mapping errors:", orgResult.errors);
+        }
+
+        const cleanup = await cleanupStaleSeedBranches();
+        if (cleanup.removed > 0) {
+          console.log(`[Upload] Cleaned up ${cleanup.removed} stale seed branches with no leads`);
+        }
+      }
+
+      advancePhase("Applying display name mappings");
+      await applyCodeMappings();
+
+      advancePhase("Updating data timestamp");
+      const summaryPayload = {
+        hles: hlesResult
+          ? { inserted: hlesResult.inserted, updated: hlesResult.updated, archived: hlesResult.archived, errors: hlesResult.errors.length }
+          : {},
+        translog: translogResult
+          ? { updated: translogResult.updated, errors: translogResult.errors.length }
+          : {},
+        dataAsOfDate: new Date().toISOString().slice(0, 10),
+      };
+      try {
+        await insertUploadSummary(summaryPayload);
+      } catch (err) {
+        console.error("[Upload] insertUploadSummary failed:", err);
+      }
+
+      setCommitProgress({ phase: "Refreshing views", pct: 95, detail: "Syncing data across all views" });
+      await Promise.all([refetchLeads(), refetchOrgMapping(), refetchDataAsOfDate()]);
+
+      setCommitResult({
+        hles: hlesResult
+          ? {
+              inserted: hlesResult.inserted,
+              updated: hlesResult.updated,
+              archived: hlesResult.archived,
+              deleted: hlesResult.deleted,
+              skipped: plan.skips.length,
+              errors: hlesResult.errors,
+            }
+          : null,
+        translog: translogResult
+          ? {
+              matchedLeads: translogReconciliation.summary.matchedLeads,
+              matchedEvents: translogReconciliation.summary.matchedEvents,
+              orphanKeys: translogReconciliation.summary.orphanKeys,
+              orphanEvents: translogReconciliation.orphanEvents,
+              updated: translogResult.updated,
+              errors: translogResult.errors,
+            }
+          : translogReconciliation
+            ? {
+                matchedLeads: translogReconciliation.summary.matchedLeads,
+                matchedEvents: translogReconciliation.summary.matchedEvents,
+                orphanKeys: translogReconciliation.summary.orphanKeys,
+                orphanEvents: translogReconciliation.orphanEvents,
+              }
+            : null,
+        orgMapping: orgResult
+          ? { branchesFound: (orgResult.updated ?? 0) + (orgResult.inserted ?? 0) }
+          : hlesParsed?.orgRows?.length
+            ? { branchesFound: hlesParsed.orgRows.length }
+            : null,
+      });
+      setStep("summary");
+    } catch (err) {
+      console.error("[Upload] Commit failed:", err);
+      setCommitError(err?.message ?? "Upload commit failed. Check console for details.");
+      setStep("preview");
+    } finally {
+      setCommitting(false);
+    }
+  }, [hlesReconciliation, translogReconciliation, translogParsed, conflictResolutions, orphanAction, hlesParsed, hlesFile, translogFile, useSupabase, refetchLeads, refetchOrgMapping, refetchDataAsOfDate]);
 
   const handleResolveConflict = useCallback((idx, resolution) => {
     setConflictResolutions((prev) => ({ ...prev, [idx]: resolution }));
@@ -591,6 +1021,7 @@ export default function InteractiveUploads() {
     setOrphanAction("keep");
     setCommitting(false);
     setCommitResult(null);
+    setCommitProgress({ phase: "", pct: 0, detail: "" });
   }, []);
 
   // ---- Render ----
@@ -654,9 +1085,9 @@ export default function InteractiveUploads() {
                     hlesParsed
                       ? [
                           { label: "Rows parsed", value: hlesParsed.rawRowCount.toLocaleString() },
-                          { label: "Valid leads", value: hlesParsed.leads.length.toLocaleString(), color: "text-[#2E7D32]" },
+                          { label: "Valid leads", value: hlesParsed.leads.length.toLocaleString() },
                           { label: "Branches found", value: hlesParsed.orgRows.length.toLocaleString() },
-                          { label: "Validation errors", value: hlesParsed.errors.length.toString(), color: hlesParsed.errors.length ? "text-[#C62828]" : "" },
+                          { label: "Validation errors", value: hlesParsed.errors.length.toString(), color: hlesParsed.errors.length ? "text-[#C62828] alert-pulse-red" : "" },
                         ]
                       : null
                   }
@@ -671,9 +1102,9 @@ export default function InteractiveUploads() {
                     translogParsed
                       ? [
                           { label: "Rows parsed", value: translogParsed.rawRowCount.toLocaleString() },
-                          { label: "Valid events", value: translogParsed.events.length.toLocaleString(), color: "text-[#2E7D32]" },
+                          { label: "Valid events", value: translogParsed.events.length.toLocaleString() },
                           { label: "Unique leads", value: translogParsed.eventsByLead.size.toLocaleString() },
-                          { label: "Validation errors", value: translogParsed.errors.length.toString(), color: translogParsed.errors.length ? "text-[#C62828]" : "" },
+                          { label: "Validation errors", value: translogParsed.errors.length.toString(), color: translogParsed.errors.length ? "text-[#C62828] alert-pulse-red" : "" },
                         ]
                       : null
                   }
@@ -690,20 +1121,18 @@ export default function InteractiveUploads() {
             <PreviewTable reconciliation={hlesReconciliation} />
 
             {translogReconciliation && (
-              <div className="mt-6 border border-[var(--neutral-200)] rounded-lg p-5">
-                <p className="text-sm font-semibold text-[var(--hertz-black)] mb-3">TRANSLOG Activity Summary</p>
-                <div className="grid grid-cols-3 gap-4">
-                  {[
-                    { label: "Events Parsed", value: translogReconciliation.summary.totalEvents },
-                    { label: "Matched to Leads", value: translogReconciliation.summary.matchedEvents, color: "text-[#2E7D32]" },
-                    { label: "Orphan Events", value: translogReconciliation.summary.orphanEventCount, color: "text-[var(--neutral-500)]" },
-                  ].map((s) => (
-                    <div key={s.label}>
-                      <p className={`text-xl font-bold ${s.color || "text-[var(--hertz-black)]"}`}>{s.value.toLocaleString()}</p>
-                      <p className="text-xs text-[var(--neutral-500)]">{s.label}</p>
-                    </div>
-                  ))}
-                </div>
+              <div className="mt-6">
+                <TranslogDetailPanel reconciliation={translogReconciliation} />
+              </div>
+            )}
+
+            {commitError && (
+              <div className="mt-6 rounded-lg p-4 bg-[#FFEBEE] alert-pulse-red">
+                <p className="text-sm font-semibold text-[#C62828] mb-1">Commit Failed</p>
+                <p className="text-xs text-[#C62828] mb-2">{commitError}</p>
+                <p className="text-xs text-[#C62828] opacity-80">
+                  Try committing again. If the error persists, check the browser console for details or contact your system administrator.
+                </p>
               </div>
             )}
 
@@ -747,11 +1176,43 @@ export default function InteractiveUploads() {
           </motion.div>
         )}
 
-        {/* If no HLES reconciliation but we parsed something, show validation only */}
-        {step === "preview" && !hlesReconciliation && !parsing && (
+        {/* TRANSLOG-only upload (no HLES) */}
+        {step === "preview" && !hlesReconciliation && translogReconciliation && (
+          <motion.div key="preview-translog" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+            <TranslogDetailPanel reconciliation={translogReconciliation} />
+
+            {commitError && (
+              <div className="mt-6 rounded-lg p-4 bg-[#FFEBEE] alert-pulse-red">
+                <p className="text-sm font-semibold text-[#C62828] mb-1">Commit Failed</p>
+                <p className="text-xs text-[#C62828] mb-2">{commitError}</p>
+                <p className="text-xs text-[#C62828] opacity-80">
+                  Try committing again. If the error persists, check the browser console for details or contact your system administrator.
+                </p>
+              </div>
+            )}
+
+            <div className="flex justify-between mt-8">
+              <button
+                onClick={() => setStep("select")}
+                className="px-4 py-2 text-sm text-[var(--neutral-500)] hover:text-[var(--hertz-black)] cursor-pointer"
+              >
+                Back
+              </button>
+              <button
+                onClick={handleCommit}
+                className="px-5 py-2.5 bg-[var(--hertz-primary)] text-[var(--hertz-black)] rounded-lg text-sm font-semibold hover:bg-[#E6BC00] transition-colors cursor-pointer"
+              >
+                Commit Changes
+              </button>
+            </div>
+          </motion.div>
+        )}
+
+        {/* Neither HLES nor TRANSLOG data to preview */}
+        {step === "preview" && !hlesReconciliation && !translogReconciliation && !parsing && (
           <motion.div key="preview-empty" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
             <div className="text-center py-12 text-[var(--neutral-400)]">
-              <p>No HLES data to preview. Go back and select an HLES file.</p>
+              <p>No data to preview. Go back and select a file.</p>
               <button onClick={() => setStep("select")} className="mt-4 text-sm text-[var(--hertz-primary)] hover:underline cursor-pointer">
                 Back to File Selection
               </button>
@@ -762,10 +1223,26 @@ export default function InteractiveUploads() {
         {/* ---- STEP: COMMIT ---- */}
         {step === "commit" && committing && (
           <motion.div key="commit" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-            <div className="text-center py-16">
-              <div className="w-12 h-12 border-3 border-[var(--hertz-primary)] border-t-transparent rounded-full animate-spin mx-auto mb-4" />
-              <p className="text-sm font-semibold text-[var(--hertz-black)]">Committing changes...</p>
-              <p className="text-xs text-[var(--neutral-500)] mt-1">Inserting new leads, updating existing records, resolving conflicts.</p>
+            <div className="py-12 max-w-md mx-auto">
+              <div className="flex items-center gap-3 mb-6">
+                <div className="w-8 h-8 border-2 border-[var(--hertz-primary)] border-t-transparent rounded-full animate-spin shrink-0" />
+                <div>
+                  <p className="text-sm font-semibold text-[var(--hertz-black)]">{commitProgress.phase || "Preparing..."}</p>
+                  {commitProgress.detail && (
+                    <p className="text-xs text-[var(--neutral-500)] mt-0.5">{commitProgress.detail}</p>
+                  )}
+                </div>
+              </div>
+
+              <div className="w-full h-2 bg-[var(--neutral-100)] rounded-full overflow-hidden">
+                <motion.div
+                  className="h-full bg-[var(--hertz-primary)] rounded-full"
+                  initial={{ width: 0 }}
+                  animate={{ width: `${commitProgress.pct}%` }}
+                  transition={{ duration: 0.3, ease: "easeOut" }}
+                />
+              </div>
+              <p className="text-xs text-[var(--neutral-400)] text-right mt-1.5">{commitProgress.pct}%</p>
             </div>
           </motion.div>
         )}
@@ -780,7 +1257,11 @@ export default function InteractiveUploads() {
                 </svg>
               </div>
               <h3 className="text-lg font-bold text-[var(--hertz-black)]">Upload Complete</h3>
-              <p className="text-sm text-[var(--neutral-500)] mt-1">Data has been processed and committed successfully.</p>
+              <p className="text-sm text-[var(--neutral-500)] mt-1">
+                {useSupabase
+                  ? "Data has been committed to Supabase and is now visible across all views."
+                  : "Data has been processed and committed successfully."}
+              </p>
             </div>
 
             <div className="grid grid-cols-2 gap-6 mb-8">
@@ -789,11 +1270,12 @@ export default function InteractiveUploads() {
                   <p className="text-sm font-semibold text-[var(--hertz-black)] mb-3">HLES Results</p>
                   <div className="space-y-2">
                     {[
-                      { label: "New leads inserted", value: commitResult.hles.inserted, color: "text-[#2E7D32]" },
-                      { label: "Existing leads updated", value: commitResult.hles.updated, color: "text-[#1565C0]" },
+                      { label: "New leads inserted", value: commitResult.hles.inserted },
+                      { label: "Existing leads updated", value: commitResult.hles.updated },
                       { label: "Leads archived", value: commitResult.hles.archived },
-                      { label: "Leads skipped", value: commitResult.hles.skipped, color: "text-[var(--neutral-500)]" },
-                    ].map((s) => (
+                      commitResult.hles.deleted > 0 && { label: "Leads removed", value: commitResult.hles.deleted, color: "text-[#C62828]" },
+                      { label: "Leads skipped", value: commitResult.hles.skipped },
+                    ].filter(Boolean).map((s) => (
                       <div key={s.label} className="flex justify-between text-sm">
                         <span className="text-[var(--neutral-500)]">{s.label}</span>
                         <span className={`font-medium ${s.color || ""}`}>{s.value}</span>
@@ -808,16 +1290,33 @@ export default function InteractiveUploads() {
                   <p className="text-sm font-semibold text-[var(--hertz-black)] mb-3">TRANSLOG Results</p>
                   <div className="space-y-2">
                     {[
-                      { label: "Leads with new events", value: commitResult.translog.matchedLeads, color: "text-[#2E7D32]" },
+                      { label: "Leads with new events", value: commitResult.translog.matchedLeads },
                       { label: "Events matched", value: commitResult.translog.matchedEvents },
-                      { label: "Orphan event keys", value: commitResult.translog.orphanKeys, color: "text-[var(--neutral-500)]" },
-                    ].map((s) => (
+                      commitResult.translog.orphanKeys > 0 && { label: "Unmatched event keys", value: commitResult.translog.orphanKeys, color: "text-[#E65100]" },
+                    ].filter(Boolean).map((s) => (
                       <div key={s.label} className="flex justify-between text-sm">
                         <span className="text-[var(--neutral-500)]">{s.label}</span>
                         <span className={`font-medium ${s.color || ""}`}>{s.value}</span>
                       </div>
                     ))}
                   </div>
+                  {commitResult.translog.orphanEvents?.length > 0 && (
+                    <button
+                      onClick={() => {
+                        const rows = commitResult.translog.orphanEvents.map((o) => {
+                          const last = o.events[o.events.length - 1];
+                          return [o.key, o.eventCount, last?.eventTypeLabel ?? "", last?.systemDate ?? "", last?.empName ?? "", last?.msgSummary ?? ""];
+                        });
+                        exportToCsv("unmatched-translog-events.csv", ["CONFIRM_NUM / Knum", "Event Count", "Last Event Type", "Last Date", "Employee", "Summary"], rows);
+                      }}
+                      className="mt-3 w-full py-2 text-xs font-medium text-[#E65100] bg-[#FFF3E0] rounded hover:bg-[#FFE0B2] cursor-pointer flex items-center justify-center gap-1.5 transition-colors"
+                    >
+                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                      </svg>
+                      Export {commitResult.translog.orphanEvents.length} unmatched key{commitResult.translog.orphanEvents.length !== 1 ? "s" : ""} as CSV
+                    </button>
+                  )}
                 </div>
               )}
             </div>
@@ -828,6 +1327,47 @@ export default function InteractiveUploads() {
                 <p className="text-xs text-[var(--neutral-500)]">
                   {commitResult.orgMapping.branchesFound} branch hierarchy records auto-derived from HLES data.
                 </p>
+              </div>
+            )}
+
+            {(commitResult.hles?.errors?.length > 0 || commitResult.translog?.errors?.length > 0) && (
+              <div className="rounded-lg p-5 mb-6 bg-[#FFF3E0] alert-pulse">
+                <div className="flex items-start justify-between mb-1">
+                  <p className="text-sm font-semibold text-[#E65100]">Some records failed to save</p>
+                  <button
+                    onClick={() => {
+                      const rows = [];
+                      (commitResult.hles?.errors ?? []).forEach((e) =>
+                        rows.push(["HLES", e.reservationId ?? "", e.error ?? ""]),
+                      );
+                      (commitResult.translog?.errors ?? []).forEach((e) =>
+                        rows.push(["TRANSLOG", e.leadId ?? "", e.error ?? ""]),
+                      );
+                      exportToCsv("failed-records.csv", ["Source", "ID", "Error"], rows);
+                    }}
+                    className="text-xs font-medium text-[#E65100] hover:underline cursor-pointer shrink-0 flex items-center gap-1"
+                  >
+                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                    </svg>
+                    Export CSV
+                  </button>
+                </div>
+                <p className="text-xs text-[#E65100] opacity-80 mb-3">
+                  Most data was committed successfully, but the rows below had errors. Fix the source data in your CSV and re-upload, or update these leads manually.
+                </p>
+                <div className="space-y-1 max-h-32 overflow-y-auto">
+                  {(commitResult.hles?.errors ?? []).map((e, i) => (
+                    <p key={`h-${i}`} className="text-xs text-[#E65100] font-mono">
+                      HLES {e.reservationId}: {e.error}
+                    </p>
+                  ))}
+                  {(commitResult.translog?.errors ?? []).map((e, i) => (
+                    <p key={`t-${i}`} className="text-xs text-[#E65100] font-mono">
+                      TRANSLOG lead {e.leadId}: {e.error}
+                    </p>
+                  ))}
+                </div>
               </div>
             )}
 

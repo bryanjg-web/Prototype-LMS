@@ -9,34 +9,34 @@ const EMAIL_TEMPLATES = [
   {
     id: "general",
     label: "General",
-    description: "Generic outreach about the reservation",
+    description: "Warm outreach about the reservation",
     subject: (res) => `Your Hertz reservation – ${res}`,
     body: (c, b, res) =>
-      `Hi ${c},\n\nThis is ${b} regarding your Hertz reservation ${res}.\n\nPlease contact us if you have any questions about your rental.\n\nThank you,\nHertz`,
+      `Hi ${c},\n\nThank you for choosing Hertz — we truly appreciate your business. We're reaching out from our ${b} location regarding your reservation ${res}.\n\nOur goal is to provide a seamless and reliable experience every time you rent with us. If there's anything we can help with — whether it's adjusting your reservation, answering questions, or simply making your trip a little easier — please don't hesitate to reach out.\n\nWe're here for you and look forward to getting you on the road.\n\nWarm regards,\nThe Hertz ${b} Team`,
   },
   {
     id: "confirmation",
     label: "Pickup Confirmation",
-    description: "Rental confirmed — come collect your vehicle",
-    subject: (res) => `Your rental is confirmed – ${res}`,
+    description: "Rental confirmed — welcoming the customer",
+    subject: (res) => `Great news — your rental is confirmed – ${res}`,
     body: (c, b, res) =>
-      `Hi ${c},\n\nGreat news — your Hertz rental reservation ${res} has been confirmed.\n\nYour vehicle is ready for collection at our ${b} location. Please bring a valid driver's licence and the credit card used at the time of booking.\n\nIf you need to adjust your pickup time or have any questions, don't hesitate to contact us at ${b}.\n\nWe look forward to getting you on the road.\n\nKind regards,\nThe Hertz ${b} Team`,
+      `Hi ${c},\n\nGreat news — your Hertz rental reservation ${res} has been confirmed, and we're excited to help you get on your way.\n\nYour vehicle is ready for collection at our ${b} location. Please bring a valid driver's licence and the credit card used at the time of booking.\n\nIf you need to adjust your pickup time or have any questions at all, we're happy to help — don't hesitate to reach out. Our goal is to make your rental experience as smooth and dependable as possible.\n\nWe truly value your trust in Hertz and look forward to welcoming you.\n\nWarm regards,\nThe Hertz ${b} Team`,
   },
   {
     id: "reminder",
     label: "Pickup Reminder",
-    description: "Friendly nudge — vehicle still waiting",
+    description: "Friendly nudge — understanding & flexible",
     subject: (res) => `Friendly reminder – your Hertz rental ${res} is ready`,
     body: (c, b, res) =>
-      `Hi ${c},\n\nJust a friendly reminder that your Hertz rental reservation ${res} is confirmed and your vehicle is still waiting for you at ${b}.\n\nIf your plans have changed or you'd like to reschedule your pickup, please give us a call so we can help you out.\n\nWe want to make sure everything goes smoothly for your trip.\n\nKind regards,\nThe Hertz ${b} Team`,
+      `Hi ${c},\n\nWe hope this message finds you well. Just a friendly reminder that your Hertz rental reservation ${res} is confirmed, and your vehicle is reserved and waiting for you at our ${b} location.\n\nWe understand that plans can change — and that's perfectly okay. If you need to adjust your pickup time or reschedule, we're happy to work with you to find a time that suits you best.\n\nWe want to make sure everything goes smoothly for your trip, so please don't hesitate to let us know how we can help.\n\nWarm regards,\nThe Hertz ${b} Team`,
   },
   {
     id: "final_attempt",
     label: "Final Attempt",
-    description: "Last contact effort — unable to reach customer",
-    subject: (res) => `Important: We've been trying to reach you – ${res}`,
+    description: "Empathetic last outreach — we care",
+    subject: (res) => `We'd love to hear from you – ${res}`,
     body: (c, b, res) =>
-      `Hi ${c},\n\nWe have been trying to reach you regarding your Hertz rental reservation ${res}, which was previously confirmed for pickup at ${b}.\n\nUnfortunately, we haven't been able to get in touch by phone or SMS. We'd like to make sure you still plan to collect your vehicle so we can keep it reserved for you.\n\nPlease contact us at ${b} at your earliest convenience. If we don't hear from you within the next 48 hours, your reservation may be released to the next customer on the waitlist.\n\nWe genuinely want to ensure you receive your vehicle — please don't hesitate to get in touch.\n\nKind regards,\nThe Hertz ${b} Team`,
+      `Hi ${c},\n\nWe've been trying to reach you regarding your Hertz reservation ${res}, which was confirmed for pickup at our ${b} location — and we want to make sure everything is okay.\n\nWe understand that life gets busy, and sometimes plans change unexpectedly. We'd love to hear from you so we can keep your reservation in place, or help you reschedule if that works better for your plans.\n\nTo make sure we can continue to hold your vehicle, please get in touch with us at ${b} at your earliest convenience. If we don't hear from you in the next 48 hours, we may need to release the reservation — but we'd genuinely love to help you get on the road.\n\nYour satisfaction matters to us, and we're here to make it work.\n\nWarm regards,\nThe Hertz ${b} Team`,
   },
 ];
 
@@ -55,16 +55,19 @@ function EmailPreview({ subject, body }) {
           <div className="bg-[var(--hertz-black)] py-4 px-6 text-center">
             <img src={LOGO_DATA_URI} alt="Hertz" width={140} height={49} className="mx-auto" />
           </div>
+          <div className="h-1 bg-[var(--hertz-primary)]" />
           <div className="px-6 py-2 border-b border-[var(--neutral-200)]">
             <p className="text-xs text-[var(--neutral-500)] mb-0.5">Subject</p>
             <p className="text-sm font-semibold text-[var(--hertz-black)] truncate">{subject}</p>
           </div>
           <div
             className="px-6 py-5 text-sm leading-relaxed text-[var(--hertz-black)]"
+            style={{ lineHeight: "1.7" }}
             dangerouslySetInnerHTML={{ __html: bodyHtml }}
           />
           <div className="bg-[var(--neutral-50)] px-6 py-3 border-t border-[var(--neutral-200)]">
-            <p className="text-xs text-[var(--neutral-500)] m-0">Thank you for choosing Hertz.</p>
+            <p className="text-xs text-[var(--neutral-500)] m-0">We truly value your trust in Hertz.</p>
+            <p className="text-[10px] text-[var(--neutral-400)] m-0 mt-1">&copy; Hertz. All rights reserved.</p>
           </div>
         </div>
       </div>

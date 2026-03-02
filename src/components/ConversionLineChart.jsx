@@ -86,12 +86,12 @@ export default function ConversionLineChart({ data }) {
         </p>
         <div className="flex items-center gap-5">
           <div className="flex items-center gap-1.5">
-            <div className="w-4 h-[3px] rounded-sm bg-[#272425]" />
-            <span className="text-[11px] text-[var(--neutral-600)] font-medium">Conversion</span>
+            <div className="w-4 h-[3px] rounded-sm bg-[var(--chart-black)]" />
+            <span className="text-xs text-[var(--neutral-600)] font-medium">Conversion</span>
           </div>
           <div className="flex items-center gap-1.5">
-            <div className="w-4 h-[2px] rounded-sm bg-[#FFD100]" style={{ backgroundImage: "repeating-linear-gradient(90deg, #FFD100 0, #FFD100 4px, transparent 4px, transparent 7px)", backgroundColor: "transparent" }} />
-            <span className="text-[11px] text-[var(--neutral-600)] font-medium">Comment Rate</span>
+            <div className="w-4 h-[2px] rounded-sm bg-[var(--chart-primary)]" style={{ backgroundImage: "repeating-linear-gradient(90deg, var(--chart-primary) 0, var(--chart-primary) 4px, transparent 4px, transparent 7px)", backgroundColor: "transparent" }} />
+            <span className="text-xs text-[var(--neutral-600)] font-medium">Comment Rate</span>
           </div>
         </div>
       </div>
@@ -112,14 +112,14 @@ export default function ConversionLineChart({ data }) {
                 y1={toY(tick)}
                 x2={width - PADDING.right}
                 y2={toY(tick)}
-                stroke="#EBEBEB"
+                stroke="var(--neutral-200)"
                 strokeDasharray="3 3"
               />
               <text
                 x={PADDING.left - 10}
                 y={toY(tick) + 4}
                 textAnchor="end"
-                className="text-[11px] fill-[#6E6E6E]"
+                className="text-xs fill-[var(--neutral-500)]"
               >
                 {tick}%
               </text>
@@ -134,7 +134,7 @@ export default function ConversionLineChart({ data }) {
                 x={toX(i)}
                 y={CHART_HEIGHT - 8}
                 textAnchor="middle"
-                className="text-[11px] fill-[#6E6E6E]"
+                className="text-xs fill-[var(--neutral-500)]"
               >
                 {d.label}
               </text>
@@ -147,14 +147,14 @@ export default function ConversionLineChart({ data }) {
             y1={PADDING.top + chartH}
             x2={width - PADDING.right}
             y2={PADDING.top + chartH}
-            stroke="#E5E5E5"
+            stroke="var(--neutral-200)"
           />
 
           {/* Comment Rate line (behind conversion) */}
           <motion.path
             d={commentPath}
             fill="none"
-            stroke="#FFD100"
+            stroke="var(--chart-primary)"
             strokeWidth={2}
             strokeDasharray="6 3"
             strokeLinecap="round"
@@ -167,7 +167,7 @@ export default function ConversionLineChart({ data }) {
           <motion.path
             d={convPath}
             fill="none"
-            stroke="#272425"
+            stroke="var(--chart-black)"
             strokeWidth={2.5}
             strokeLinecap="round"
             strokeLinejoin="round"
@@ -184,7 +184,7 @@ export default function ConversionLineChart({ data }) {
                 cx={p.x}
                 cy={p.y}
                 r={hoveredIdx === i ? 5 : 3}
-                fill="#272425"
+                fill="var(--chart-black)"
                 stroke={hoveredIdx === i ? "#fff" : "none"}
                 strokeWidth={2}
                 className="transition-all duration-150"
@@ -197,7 +197,7 @@ export default function ConversionLineChart({ data }) {
                 cx={p.x}
                 cy={p.y}
                 r={hoveredIdx === i ? 4.5 : 2.5}
-                fill="#FFD100"
+                fill="var(--chart-primary)"
                 stroke={hoveredIdx === i ? "#fff" : "none"}
                 strokeWidth={2}
                 className="transition-all duration-150"
@@ -211,7 +211,7 @@ export default function ConversionLineChart({ data }) {
               y1={PADDING.top}
               x2={toX(hoveredIdx)}
               y2={PADDING.top + chartH}
-              stroke="#272425"
+              stroke="var(--chart-black)"
               strokeWidth={1}
               strokeDasharray="3 3"
               opacity={0.3}
@@ -242,17 +242,17 @@ export default function ConversionLineChart({ data }) {
                 {hovered.label}
               </p>
               <div className="flex items-center gap-2 mb-1">
-                <div className="w-2 h-2 rounded-full bg-[#272425] flex-shrink-0" />
-                <span className="text-[11px] text-[var(--neutral-600)]">Conversion</span>
-                <span className="text-[11px] font-bold ml-auto text-[#272425]">{hovered.conversionRate}%</span>
+                <div className="w-2 h-2 rounded-full bg-[var(--chart-black)] flex-shrink-0" />
+                <span className="text-xs text-[var(--neutral-600)]">Conversion</span>
+                <span className="text-xs font-bold ml-auto text-[var(--chart-black)]">{hovered.conversionRate}%</span>
               </div>
               <div className="flex items-center gap-2 mb-1">
-                <div className="w-2 h-2 rounded-full bg-[#FFD100] flex-shrink-0" />
-                <span className="text-[11px] text-[var(--neutral-600)]">Comment Rate</span>
-                <span className="text-[11px] font-bold ml-auto text-[#B89400]">{hovered.commentRate}%</span>
+                <div className="w-2 h-2 rounded-full bg-[var(--chart-primary)] flex-shrink-0" />
+                <span className="text-xs text-[var(--neutral-600)]">Comment Rate</span>
+                <span className="text-xs font-bold ml-auto text-[var(--chart-primary)]">{hovered.commentRate}%</span>
               </div>
               <div className="border-t border-[var(--neutral-100)] mt-1.5 pt-1.5">
-                <p className="text-[10px] text-[var(--neutral-600)]">
+                <p className="text-xs text-[var(--neutral-600)]">
                   {hovered.rented} rented of {hovered.totalLeads} leads
                 </p>
               </div>

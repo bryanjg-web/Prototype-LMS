@@ -7,12 +7,11 @@ import { motion, AnimatePresence } from "framer-motion";
 import { useApp } from "../../context/AppContext";
 import StatusBadge from "../StatusBadge";
 import { getLeadsForBranchInRange } from "../../selectors/demoSelectors";
-import { orgMapping } from "../../data/mockData";
+import { useData } from "../../context/DataContext";
+import { formatDateRange } from "../../utils/dateTime";
 
-function formatDateRange(dateRange) {
-  if (!dateRange?.start || !dateRange?.end) return "";
-  const fmt = (d) => d.toLocaleDateString("en-AU", { month: "short", day: "numeric" });
-  return `${fmt(dateRange.start)} – ${fmt(dateRange.end)}`;
+function formatDateRangeDisplay(dateRange) {
+  return formatDateRange(dateRange?.start, dateRange?.end) || "";
 }
 
 const METRIC_SECTIONS = [
@@ -104,6 +103,7 @@ function LeadTable({ leads, onLeadClick }) {
 
 export default function BranchComplianceDetailPane({ branchRow, dateRange, leads, onClose }) {
   const { navigateTo, selectLead } = useApp();
+  const { orgMapping } = useData();
   const [activeTab, setActiveTab] = useState("cancelledUnreviewed");
 
   const branchLeads = useMemo(
@@ -167,7 +167,7 @@ export default function BranchComplianceDetailPane({ branchRow, dateRange, leads
                 {branchRow.branch} — Line-level data
               </h2>
               <p className="text-xs text-[var(--neutral-600)] mt-0.5">
-                {branchRow.bmName} · {zone} · {formatDateRange(dateRange)}
+                {branchRow.bmName} · {zone} · {formatDateRangeDisplay(dateRange)}
               </p>
             </div>
             <button

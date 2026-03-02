@@ -1,6 +1,7 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
 import { useApp } from "../../context/AppContext";
+import { useAuth } from "../../context/AuthContext";
 import { useData } from "../../context/DataContext";
 import {
   getGMDashboardStats,
@@ -10,11 +11,11 @@ import {
   getInsuranceCompanies,
   getZones,
   relChange,
+  resolveGMName,
 } from "../../selectors/demoSelectors";
-import MetricDrilldownModal from "../MetricDrilldownModal";
-import { orgMapping } from "../../data/mockData";
+import GMMetricDrilldownModal from "../GMMetricDrilldownModal";
 
-const quartileColors = { 1: "#2E7D32", 2: "#FFD100", 3: "#6E6E6E", 4: "#C62828" };
+const quartileColors = { 1: "#2E7D32", 2: "#F4C300", 3: "#808080", 4: "#C62828" };
 
 function getQuartile(rate, maxRate) {
   if (rate == null) return 4;
@@ -27,26 +28,61 @@ function getQuartile(rate, maxRate) {
 
 export default function InteractiveComplianceDashboard() {
   const { navigateTo } = useApp();
-  const { leads } = useData();
+  const { userProfile } = useAuth();
+  const { leads, loading, orgMapping } = useData();
   const reduceMotion = useReducedMotion();
-  const presets = useMemo(() => getDateRangePresets(), []);
+  const presets = useMemo(() => getDateRangePresets(), [loading]);
+
+  const gmName = resolveGMName(userProfile?.displayName, userProfile?.id);
+  const gmBranches = useMemo(
+    () => orgMapping.filter((r) => r.gm === gmName).map((r) => r.branch),
+    [orgMapping, gmName]
+  );
+  const gmZone = useMemo(() => {
+    const row = orgMapping.find((r) => r.gm === gmName && r.zone);
+    return row?.zone ?? null;
+  }, [orgMapping, gmName]);
+
+  const gmBranchesHaveData = useMemo(
+    () => gmBranches.length > 0 && (leads ?? []).some((l) => gmBranches.includes(l.branch)),
+    [leads, gmBranches]
+  );
 
   const [selectedPresetKey, setSelectedPresetKey] = useState("this_week");
-  const [zoneFilter, setZoneFilter] = useState("All");
+  const [scope, setScope] = useState("pending");
+  const [zoneFilter, setZoneFilter] = useState("_gm_default_");
   const [branchFilter, setBranchFilter] = useState("All");
   const [insuranceFilter, setInsuranceFilter] = useState("All");
-  const [sortMetric, setSortMetric] = useState("commentRate");
+  const [sortMetric, setSortMetric] = useState("conversionRate");
+
+  useEffect(() => {
+    if (scope !== "pending") return;
+    if (loading) return;
+    setScope(gmBranchesHaveData ? "my_branches" : "all");
+  }, [loading, gmBranchesHaveData, scope]);
+
+  const resolvedScope = scope === "pending" ? "all" : scope;
+  const effectiveZoneFilter = zoneFilter === "_gm_default_" ? (gmZone ?? "All") : zoneFilter;
 
   const currentPreset = presets.find((p) => p.key === selectedPresetKey);
   const dateRange = currentPreset ? { start: currentPreset.start, end: currentPreset.end } : null;
   const insuranceCompanies = useMemo(() => getInsuranceCompanies(leads), [leads]);
-  const zones = useMemo(() => getZones(), []);
-  const branches = useMemo(() => [...new Set(orgMapping.map((r) => r.branch))].sort(), []);
+  const zones = useMemo(() => getZones(), [loading]);
+  const branches = useMemo(() => {
+    const scopedRows = resolvedScope === "my_branches"
+      ? orgMapping.filter((r) => gmBranches.includes(r.branch))
+      : effectiveZoneFilter !== "All"
+        ? orgMapping.filter((r) => r.zone === effectiveZoneFilter)
+        : orgMapping;
+    return [...new Set(scopedRows.map((r) => r.branch))].sort();
+  }, [orgMapping, resolvedScope, gmBranches, effectiveZoneFilter]);
 
   const filteredLeads = useMemo(() => {
     let result = leads ?? [];
-    if (zoneFilter !== "All") {
-      const zoneBranches = orgMapping.filter((r) => r.zone === zoneFilter).map((r) => r.branch);
+    if (resolvedScope === "my_branches") {
+      result = result.filter((l) => gmBranches.includes(l.branch));
+    } else if (effectiveZoneFilter !== "All") {
+      const zoneBranches = orgMapping.filter((r) => r.zone === effectiveZoneFilter).map((r) => r.branch);
       result = result.filter((l) => zoneBranches.includes(l.branch));
     }
     if (branchFilter !== "All") {
@@ -56,12 +92,12 @@ export default function InteractiveComplianceDashboard() {
       result = result.filter((l) => l.insuranceCompany === insuranceFilter);
     }
     return result;
-  }, [leads, zoneFilter, branchFilter, insuranceFilter]);
+  }, [leads, resolvedScope, gmBranches, effectiveZoneFilter, branchFilter, insuranceFilter, orgMapping]);
 
   const stats = useMemo(() => getGMDashboardStats(filteredLeads, dateRange), [filteredLeads, dateRange]);
   const leaderboard = useMemo(
-    () => getGMBranchLeaderboard(filteredLeads, dateRange, sortMetric, "all"),
-    [filteredLeads, dateRange, sortMetric]
+    () => getGMBranchLeaderboard(filteredLeads, dateRange, sortMetric, resolvedScope, gmName),
+    [filteredLeads, dateRange, sortMetric, resolvedScope, gmName]
   );
 
   const maxRate = Math.max(...leaderboard.sorted.map((b) => b[sortMetric] ?? 0), 1);
@@ -87,30 +123,54 @@ export default function InteractiveComplianceDashboard() {
   const metricLabel = sortOptions.find((o) => o.value === sortMetric)?.label ?? sortMetric;
 
   const [drilldownMetric, setDrilldownMetric] = useState(null);
+  const [showAllBranches, setShowAllBranches] = useState(false);
+  const SCOREBOARD_LIMIT = 20;
 
   return (
     <div>
       <AnimatePresence>
-        {drilldownMetric && (
-          <MetricDrilldownModal
-            metricKey={drilldownMetric}
-            onClose={() => setDrilldownMetric(null)}
-            leads={filteredLeads}
-            branchTasks={[]}
-            dateRange={dateRange}
-            comparisonRange={comparisonRange}
-            branch={null}
-          />
-        )}
+        {drilldownMetric && (() => {
+          const metricValueMap = {
+            cancelled_unreviewed: stats.cancelledUnreviewed,
+            unused_overdue: stats.unusedOverdue,
+            comment_rate: stats.commentCompliance,
+            conversion_rate: stats.conversionRate,
+            contacted_within_30_min: stats.pctWithin30,
+            branch_vs_hrd_split: stats.branchPct,
+          };
+          const prevMetricValueMap = {
+            cancelled_unreviewed: prevStats?.cancelledUnreviewed,
+            unused_overdue: prevStats?.unusedOverdue,
+            comment_rate: prevStats?.commentCompliance,
+            conversion_rate: prevStats?.conversionRate,
+            contacted_within_30_min: prevStats?.pctWithin30,
+            branch_vs_hrd_split: prevStats?.branchPct,
+          };
+          return (
+            <GMMetricDrilldownModal
+              metricKey={drilldownMetric}
+              onClose={() => setDrilldownMetric(null)}
+              leads={filteredLeads}
+              dateRange={dateRange}
+              comparisonRange={comparisonRange}
+              currentValue={metricValueMap[drilldownMetric]}
+              previousValue={prevMetricValueMap[drilldownMetric]}
+              selectedPresetKey={selectedPresetKey}
+              gmName={gmName}
+            />
+          );
+        })()}
       </AnimatePresence>
       <div className="flex items-center justify-between mb-1">
         <div className="flex items-center gap-4">
           <h2 className="text-xl font-semibold text-[var(--hertz-black)]">Compliance Dashboard</h2>
-          <span className="text-sm text-[var(--neutral-600)]">D. Williams — All Zones</span>
+          <span className="text-sm text-[var(--neutral-600)]">
+            {gmName}{resolvedScope === "my_branches" ? ` — My Branches` : effectiveZoneFilter !== "All" ? ` — ${effectiveZoneFilter}` : " — All Zones"}
+          </span>
         </div>
       </div>
 
-      <div className="flex items-center gap-3 mb-6">
+      <div className="flex items-center gap-3 mb-6 flex-wrap">
         <div className="flex items-center gap-1.5">
           {presets.map((p) => (
             <button
@@ -127,17 +187,35 @@ export default function InteractiveComplianceDashboard() {
           ))}
         </div>
         <span className="text-[var(--neutral-200)]">|</span>
-        <label className="text-xs text-[var(--neutral-600)] font-medium">Zone</label>
+        <label className="text-xs text-[var(--neutral-600)] font-medium">Scope</label>
         <select
-          value={zoneFilter}
-          onChange={(e) => setZoneFilter(e.target.value)}
+          value={resolvedScope}
+          onChange={(e) => {
+            setScope(e.target.value);
+            setBranchFilter("All");
+            setShowAllBranches(false);
+            if (e.target.value === "my_branches") setZoneFilter("_gm_default_");
+          }}
           className="px-3 py-1.5 border border-[var(--neutral-200)] rounded-md text-xs bg-white focus:outline-none focus:ring-2 focus:ring-[var(--hertz-primary)]"
         >
-          <option>All</option>
-          {zones.map((z) => (
-            <option key={z} value={z}>{z}</option>
-          ))}
+          <option value="my_branches">My Branches</option>
+          <option value="all">All Branches</option>
         </select>
+        {resolvedScope !== "my_branches" && (
+          <>
+            <label className="text-xs text-[var(--neutral-600)] font-medium">Zone</label>
+            <select
+              value={effectiveZoneFilter}
+              onChange={(e) => { setZoneFilter(e.target.value); setBranchFilter("All"); setShowAllBranches(false); }}
+              className="px-3 py-1.5 border border-[var(--neutral-200)] rounded-md text-xs bg-white focus:outline-none focus:ring-2 focus:ring-[var(--hertz-primary)]"
+            >
+              <option>All</option>
+              {zones.map((z) => (
+                <option key={z} value={z}>{z}</option>
+              ))}
+            </select>
+          </>
+        )}
         <label className="text-xs text-[var(--neutral-600)] font-medium">Branch</label>
         <select
           value={branchFilter}
@@ -223,40 +301,66 @@ export default function InteractiveComplianceDashboard() {
           <div
             className="absolute top-0 bottom-0 w-0 border-l-2 border-dashed border-[var(--hertz-black)] opacity-70 pointer-events-none z-10"
             style={{
-              left: `calc(1.5rem + 1rem + 8rem + (100% - 1.5rem - 1rem - 8rem - 1rem - 1rem - 3rem) * ${benchWidth} / 100)`,
+              left: `calc(1.5rem + 1rem + 9rem + 1rem + 9rem + (100% - 1.5rem - 1rem - 9rem - 1rem - 9rem - 1rem - 1rem - 3rem) * ${benchWidth} / 100)`,
             }}
             title={`Benchmark: ${benchVal}%`}
             aria-hidden
           />
         )}
         <div className="space-y-3">
-          {leaderboard.sorted.filter((b) => b.total > 0).map((bm, i) => {
-            const val = bm[sortMetric] ?? 0;
-            const quartile = getQuartile(val, maxRate);
+          {(() => {
+            const withData = leaderboard.sorted.filter((b) => b.total > 0);
+            const visible = showAllBranches ? withData : withData.slice(0, SCOREBOARD_LIMIT);
+            const hiddenCount = withData.length - visible.length;
             return (
-              <div key={bm.branch} className="flex items-center gap-4">
-                <span className="w-6 shrink-0 text-xs font-bold text-[var(--neutral-500)] text-right">{bm.rank}</span>
-                <span className="w-32 shrink-0 text-sm text-[var(--hertz-black)] font-medium truncate" title={`${bm.bmName} — ${bm.branch}`}>
-                  {bm.bmName}
-                </span>
-                <div className="flex-1 min-w-0 bg-[var(--neutral-50)] rounded-md h-8 relative overflow-hidden">
-                  <motion.div
-                    initial={{ width: 0 }}
-                    animate={{ width: `${Math.min(val, 100)}%` }}
-                    transition={{ duration: 0.8, delay: i * 0.06, ease: "easeOut" }}
-                    className="h-full rounded-md"
-                    style={{ backgroundColor: quartileColors[quartile] }}
-                  />
-                </div>
-                <span className="w-12 shrink-0 text-sm font-semibold text-right text-[var(--hertz-black)]">
-                  {val != null ? `${val}%` : "—"}
-                </span>
-              </div>
+              <>
+                {visible.map((bm, i) => {
+                  const val = bm[sortMetric] ?? 0;
+                  const quartile = getQuartile(val, maxRate);
+                  const bmDisplay = bm.bmName && bm.bmName !== "—" && bm.bmName !== "— Unassigned —" ? bm.bmName : "—";
+                  return (
+                    <div key={bm.branch} className="flex items-center gap-4 group/row relative">
+                      <span className="w-6 shrink-0 text-xs font-bold text-[var(--neutral-500)] text-right">{bm.rank}</span>
+                      <span className="w-36 shrink-0 text-sm text-[var(--neutral-600)] font-medium truncate" title={bm.branch}>
+                        {bm.branch}
+                      </span>
+                      <span className="w-36 shrink-0 text-sm text-[var(--neutral-600)] truncate" title={bmDisplay}>
+                        {bmDisplay}
+                      </span>
+                      <div className="flex-1 min-w-0 bg-[var(--neutral-50)] rounded-md h-8 relative overflow-hidden">
+                        <motion.div
+                          initial={{ width: 0 }}
+                          animate={{ width: `${Math.min(val, 100)}%` }}
+                          transition={{ duration: 0.8, delay: i * 0.06, ease: "easeOut" }}
+                          className="h-full rounded-md"
+                          style={{ backgroundColor: quartileColors[quartile] }}
+                        />
+                        <div className="absolute inset-0 z-10 opacity-0 group-hover/row:opacity-100 transition-opacity duration-150 pointer-events-none flex items-center justify-center">
+                          <span className="bg-[var(--hertz-black)] text-white text-xs font-semibold px-3 py-1.5 rounded-md shadow-lg whitespace-nowrap">
+                            {bm.rented} converted / {bm.total} leads
+                          </span>
+                        </div>
+                      </div>
+                      <span className="w-12 shrink-0 text-sm font-semibold text-right text-[var(--hertz-black)]">
+                        {val != null ? `${val}%` : "—"}
+                      </span>
+                    </div>
+                  );
+                })}
+                {hiddenCount > 0 && (
+                  <button
+                    onClick={() => setShowAllBranches(true)}
+                    className="w-full py-2.5 text-sm font-semibold text-[var(--neutral-600)] bg-[var(--neutral-50)] hover:bg-[var(--neutral-100)] rounded-md transition-colors cursor-pointer"
+                  >
+                    View All ({withData.length} branches)
+                  </button>
+                )}
+                {withData.length === 0 && (
+                  <p className="text-sm text-[var(--neutral-500)] py-4 text-center">No data for this period</p>
+                )}
+              </>
             );
-          })}
-          {leaderboard.sorted.filter((b) => b.total > 0).length === 0 && (
-            <p className="text-sm text-[var(--neutral-500)] py-4 text-center">No data for this period</p>
-          )}
+          })()}
         </div>
       </div>
 

@@ -1,16 +1,9 @@
 import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { cancellationReasonCategories, nextActions } from "../data/mockData";
+import { useData } from "../context/DataContext";
+import { formatDateForInput } from "../utils/dateTime";
 
 const CLOSE_ACTION = "Close — no further action";
-
-function formatDateForInput(dateStr) {
-  if (!dateStr) return "";
-  if (/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) return dateStr;
-  const d = new Date(dateStr);
-  if (isNaN(d.getTime())) return "";
-  return d.toISOString().slice(0, 10);
-}
 
 /** Required fields per target status */
 export function getRequiredFieldsForStatus(status) {
@@ -33,6 +26,7 @@ export function statusChangeNeedsModal(targetStatus) {
 }
 
 export default function StatusChangeModal({ lead, fromStatus, toStatus, onConfirm, onCancel }) {
+  const { cancellationReasonCategories, nextActions } = useData();
   const existing = lead?.enrichment || {};
   const [reason, setReason] = useState(existing.reason || "");
   const [nextAction, setNextAction] = useState(existing.nextAction || "");

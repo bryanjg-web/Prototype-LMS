@@ -117,7 +117,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
     }
 
     return new Response(
-      JSON.stringify({ success: true, callSid: data.sid, ...(activityError && { activityError }) }),
+      JSON.stringify({ success: true, callSid: data.sid, from: TWILIO_PHONE_NUMBER, ...(activityError && { activityError }) }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   } catch (err) {

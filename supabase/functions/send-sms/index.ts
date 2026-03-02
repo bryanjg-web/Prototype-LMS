@@ -24,7 +24,7 @@ interface SendSmsBody {
 }
 
 function defaultBody(customer: string, branch: string, reservationId: string) {
-  return `Hi ${customer}, this is ${branch} regarding your Hertz reservation ${reservationId}. Please call us back.`;
+  return `Hi ${customer}, this is the Hertz ${branch} team reaching out about your reservation ${reservationId}. We'd love to make sure everything is on track for your rental. Please give us a call at your convenience — we're here to help!`;
 }
 
 Deno.serve(async (req: Request): Promise<Response> => {
@@ -113,7 +113,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
     }
 
     return new Response(
-      JSON.stringify({ success: true, sid: data.sid, ...(activityError && { activityError }) }),
+      JSON.stringify({ success: true, sid: data.sid, from: TWILIO_PHONE_NUMBER, ...(activityError && { activityError }) }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   } catch (err) {

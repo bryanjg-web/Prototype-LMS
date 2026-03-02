@@ -15,11 +15,10 @@ import {
 import StatusBadge from "./StatusBadge";
 import GroupBySelector from "./GroupBySelector";
 import ConversionBreakdownTable from "./ConversionBreakdownTable";
+import { formatDateRange } from "../utils/dateTime";
 
 function formatRange(range) {
-  if (!range?.start || !range?.end) return "—";
-  const fmt = (d) => d.toLocaleDateString("en-AU", { month: "short", day: "numeric" });
-  return `${fmt(range.start)} – ${fmt(range.end)}`;
+  return formatDateRange(range?.start, range?.end) || "—";
 }
 
 const METRIC_CONFIG = {

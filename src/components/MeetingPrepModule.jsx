@@ -25,12 +25,12 @@ export default function MeetingPrepModule({ navigateTo, leads, dateRange, branch
   const { dateStr, daysLeft } = getNextComplianceMeetingDate();
 
   return (
-    <motion.div {...cardAnim(0, reduceMotion)}>
+    <motion.div {...cardAnim(0, reduceMotion)} className="h-full">
       <motion.button
         onClick={() => navigateTo("bm-meeting-prep")}
         whileHover={!reduceMotion ? { scale: 1.005 } : {}}
         whileTap={!reduceMotion ? { scale: 0.995 } : {}}
-        className={`w-full text-left border-2 rounded-xl p-5 transition-all duration-200 cursor-pointer group
+        className={`w-full h-full text-left border-2 rounded-xl p-5 transition-all duration-200 cursor-pointer group
           ${hasNotifications
             ? "bg-[var(--hertz-primary-subtle)] border-[var(--hertz-primary)] shadow-[0_0_0_2px_rgba(255,209,0,0.4)]"
             : "border-[var(--neutral-200)] hover:border-[var(--hertz-primary)] hover:shadow-[var(--shadow-lg)] bg-white hover:bg-[var(--hertz-primary-subtle)]"
@@ -45,33 +45,34 @@ export default function MeetingPrepModule({ navigateTo, leads, dateRange, branch
               </svg>
             </div>
             <div className="min-w-0">
-              <h3 className="text-lg font-extrabold text-[var(--hertz-black)] tracking-tight">
+              <h3 className="text-lg font-extrabold text-[var(--hertz-black)] tracking-tight leading-snug">
                 Meeting Prep
               </h3>
-              <p className="text-sm text-[var(--neutral-600)] mt-0.5">
+              <p className="text-sm text-[var(--neutral-600)] mt-0.5 line-clamp-2">
                 {outstandingCount > 0 ? (
                   <>
                     <strong className="text-[var(--hertz-black)]">{outstandingCount}</strong>
                     {outstandingCount === 1
-                      ? " action needed before your meeting"
-                      : " actions needed before your meeting"}
-                    — add comments or resolve data mismatches on Cancelled/Unused leads.
+                      ? " action needed before your meeting."
+                      : " actions needed before your meeting."}
                   </>
                 ) : (
-                  "All caught up. No leads need comments or data mismatch resolution before your meeting."
+                  "All caught up — no outstanding items before your meeting."
                 )}
               </p>
-              <p className="text-xs font-medium text-[var(--hertz-black)] mt-2 flex items-center gap-1.5">
-                <svg className="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                </svg>
-                Weekly Compliance Meeting: {dateStr}
-                {daysLeft >= 0 && (
-                  <span className="font-semibold">
-                    — {daysLeft === 0 ? "today" : `${daysLeft} day${daysLeft !== 1 ? "s" : ""} left`}
-                  </span>
-                )}
-              </p>
+              <div className="flex items-center flex-wrap gap-1.5 mt-2">
+                <span className="inline-flex items-center gap-1 text-xs font-medium bg-[var(--neutral-100)] text-[var(--hertz-black)] px-2 py-0.5 rounded-md">
+                  <svg className="w-3 h-3 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                  </svg>
+                  {dateStr}
+                  {daysLeft >= 0 && (
+                    <span className="font-semibold">
+                      · {daysLeft === 0 ? "Today" : `${daysLeft}d left`}
+                    </span>
+                  )}
+                </span>
+              </div>
             </div>
           </div>
           <div className="flex items-center shrink-0">

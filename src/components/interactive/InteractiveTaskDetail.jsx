@@ -5,6 +5,7 @@ import BackButton from "../BackButton";
 import { useAuth } from "../../context/AuthContext";
 import { useData } from "../../context/DataContext";
 import { getTaskById, getLeadById } from "../../selectors/demoSelectors";
+import { formatDateTime, formatDateTimeShort } from "../../utils/dateTime";
 
 const STATUS_OPTIONS = ["Open", "In Progress", "Done"];
 const PRIORITY_COLORS = {
@@ -15,10 +16,7 @@ const PRIORITY_COLORS = {
 const SOURCE_LABELS = { gm_assigned: "GM Assigned", auto_translog: "Auto (Translog)", auto_other: "Auto (Other)" };
 
 function formatTimestamp(iso) {
-  if (!iso) return null;
-  const d = new Date(iso);
-  return d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) +
-    ", " + d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
+  return formatDateTime(iso);
 }
 
 function formatRelativeTime(iso) {
@@ -109,8 +107,7 @@ export default function InteractiveTaskDetail() {
     } else {
       const author = userProfile?.displayName ?? "—";
       const entry = {
-        time: new Date().toLocaleDateString("en-US", { month: "short", day: "numeric" }) +
-          ", " + new Date().toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" }),
+        time: formatDateTimeShort(new Date()),
         timestamp: Date.now(),
         author,
         note: text,

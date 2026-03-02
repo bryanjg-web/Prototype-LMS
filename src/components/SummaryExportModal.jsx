@@ -10,6 +10,7 @@ import {
   tasksInDateRange,
 } from "../selectors/demoSelectors";
 import { exportSummaryToCSV } from "../utils/exportUtils";
+import { formatDateRange } from "../utils/dateTime";
 
 const METRIC_DEFS = [
   { key: "total_leads", label: "Total Leads", getValue: (stats) => stats.total },
@@ -52,8 +53,7 @@ export default function SummaryExportModal({ onClose, leads, branchTasks, branch
 
   const periodLabel = useMemo(() => {
     if (useCustom && customStart && customEnd) {
-      const fmt = (s) => new Date(s + "T12:00:00").toLocaleDateString("en-AU", { month: "short", day: "numeric", year: "numeric" });
-      return `${fmt(customStart)} – ${fmt(customEnd)}`;
+      return formatDateRange(new Date(customStart + "T12:00:00"), new Date(customEnd + "T12:00:00"), true);
     }
     const preset = presets.find((p) => p.key === selectedPreset);
     return preset?.label ?? "—";

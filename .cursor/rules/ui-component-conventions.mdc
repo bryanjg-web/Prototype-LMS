@@ -5,12 +5,16 @@ alwaysApply: true
 
 # UI & Component Conventions
 
-## Brand Palette (Hertz)
+## Brand Palette (Hertz — 2024 Sustainability Report)
 
-- Primary gold: `#FFD100` / `var(--hertz-primary)`
-- Black: `#272425` / `var(--hertz-black)`
+- Primary gold (PANTONE 7406 C): `#F4C300` / `var(--hertz-primary)`
+- Black: `#141618` / `var(--hertz-black)`
+- Chart success: `#2E7D32` / `var(--chart-success)`
+- Chart info: `#5C6B7A` / `var(--chart-info)` (muted blue-gray)
+- Chart accent: `#7A6B5E` / `var(--chart-accent)` (warm taupe)
+- Chart secondary: `#5C7C6B` / `var(--chart-secondary)` (sage)
 - Text: `#1A1A1A`
-- Gray: `#666666`
+- Gray: `#666666` / `#808080` for chart neutrals
 - Background: `#FFFFFF`
 - Subtle gold: `var(--hertz-primary-subtle)` for highlights
 

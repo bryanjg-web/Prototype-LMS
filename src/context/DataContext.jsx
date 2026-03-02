@@ -4,23 +4,45 @@
  * When false: uses mockData with localStorage persistence so enrichment survives logout/restart.
  */
 import { createContext, useContext, useState, useEffect, useCallback } from "react";
-import { leads as mockLeads, winsLearnings as mockWinsLearnings } from "../data/mockData";
+import {
+  leads as mockLeads,
+  winsLearnings as mockWinsLearnings,
+  dataAsOfDate as mockDataAsOfDate,
+  orgMapping as mockOrgMapping,
+  cancellationReasonCategories as mockCancellationReasonCategories,
+  nextActions as mockNextActions,
+  branchManagers as mockBranchManagers,
+  weeklyTrends as mockWeeklyTrends,
+  leaderboardData as mockLeaderboardData,
+} from "../data/mockData";
 import {
   fetchLeads,
   fetchUploadSummary,
+  fetchOrgMapping as apiFetchOrgMapping,
+  fetchBranchManagers as apiFetchBranchManagers,
+  fetchWeeklyTrends as apiFetchWeeklyTrends,
+  fetchLeaderboardData as apiFetchLeaderboardData,
+  fetchCancellationReasonCategories as apiFetchCancellationReasonCategories,
+  fetchNextActions as apiFetchNextActions,
+  fetchTasksForGM as apiFetchTasksForGM,
   updateLeadEnrichment as apiUpdateLeadEnrichment,
   updateLeadContact as apiUpdateLeadContact,
+  updateLeadDirective as apiUpdateLeadDirective,
+  markLeadReviewed as apiMarkLeadReviewed,
+  fetchGmDirectives as apiFetchGmDirectives,
+  insertGmDirective as apiInsertGmDirective,
   fetchLeadActivities as apiFetchLeadActivities,
   fetchTasksForBranch as apiFetchTasksForBranch,
   fetchTasksForLead as apiFetchTasksForLead,
   fetchTaskById as apiFetchTaskById,
   updateTaskStatus as apiUpdateTaskStatus,
   appendTaskNote as apiAppendTaskNote,
+  insertTask as apiInsertTask,
   createComplianceTasksForBranch as apiCreateComplianceTasksForBranch,
   fetchWinsLearnings as apiFetchWinsLearnings,
   submitWinsLearning as apiSubmitWinsLearning,
 } from "../data/supabaseData";
-import { dataAsOfDate as mockDataAsOfDate } from "../data/mockData";
+import { setOrgMappingSource, setBranchManagersSource, setWeeklyTrendsSource, setNowFromLeads } from "../selectors/demoSelectors";
 
 const DataContext = createContext(null);
 
@@ -72,17 +94,35 @@ export function DataProvider({ children }) {
     return ensureMismatchDemoLead(initial);
   });
   const [winsLearnings, setWinsLearnings] = useState(USE_SUPABASE ? [] : [...mockWinsLearnings]);
+  const [orgMapping, setOrgMapping] = useState(USE_SUPABASE ? [] : [...mockOrgMapping]);
+  const [gmTasks, setGmTasks] = useState(null);
+  const [cancellationReasonCategories, setCancellationReasonCategories] = useState(
+    USE_SUPABASE ? [] : [...mockCancellationReasonCategories],
+  );
+  const [nextActions, setNextActions] = useState(USE_SUPABASE ? [] : [...mockNextActions]);
+  const [branchManagers, setBranchManagers] = useState(USE_SUPABASE ? [] : [...mockBranchManagers]);
+  const [weeklyTrends, setWeeklyTrends] = useState(USE_SUPABASE ? { bm: [], gm: [] } : mockWeeklyTrends);
+  const [leaderboardData, setLeaderboardData] = useState(
+    USE_SUPABASE ? { branches: [], gms: [], ams: [], zones: [] } : mockLeaderboardData,
+  );
   const [loading, setLoading] = useState(USE_SUPABASE);
   const [error, setError] = useState(null);
   const [dataAsOfDate, setDataAsOfDate] = useState(USE_SUPABASE ? null : mockDataAsOfDate);
 
+  const refetchDataAsOfDate = useCallback(async () => {
+    if (!USE_SUPABASE) return;
+    try {
+      const { dataAsOfDate: d } = await fetchUploadSummary();
+      setDataAsOfDate(d ?? null);
+    } catch {
+      setDataAsOfDate(null);
+    }
+  }, []);
+
   // Fetch upload summary (data-as-of date) when using Supabase
   useEffect(() => {
-    if (!USE_SUPABASE) return;
-    fetchUploadSummary()
-      .then(({ dataAsOfDate: d }) => setDataAsOfDate(d ?? null))
-      .catch(() => setDataAsOfDate(null));
-  }, [USE_SUPABASE]);
+    if (USE_SUPABASE) refetchDataAsOfDate();
+  }, [refetchDataAsOfDate]);
 
   // Persist leads to localStorage whenever they change (mock mode only)
   useEffect(() => {
@@ -98,6 +138,7 @@ export function DataProvider({ children }) {
     try {
       const data = await fetchLeads();
       setLeads(data ?? []);
+      if (data?.length) setNowFromLeads(data);
     } catch (err) {
       setError(err?.message ?? "Failed to fetch leads");
     } finally {
@@ -116,6 +157,107 @@ export function DataProvider({ children }) {
       .then((data) => setWinsLearnings(data ?? []))
       .catch((err) => console.error("[DataContext] fetchWinsLearnings failed:", err));
   }, []);
+
+  const refetchOrgMapping = useCallback(async () => {
+    if (!USE_SUPABASE) return;
+    try {
+      const data = await apiFetchOrgMapping();
+      const mapping = data ?? [];
+      setOrgMapping(mapping);
+      setOrgMappingSource(mapping);
+    } catch (err) {
+      console.error("[DataContext] fetchOrgMapping failed:", err);
+    }
+  }, []);
+
+  // Fetch org mapping on mount (Supabase mode). Also sync into demoSelectors module-level variable.
+  useEffect(() => {
+    if (USE_SUPABASE) refetchOrgMapping();
+  }, [refetchOrgMapping]);
+
+  // Fetch reference data on mount (Supabase mode)
+  useEffect(() => {
+    if (!USE_SUPABASE) return;
+    apiFetchCancellationReasonCategories()
+      .then((data) => setCancellationReasonCategories(data ?? []))
+      .catch((err) => console.error("[DataContext] fetchCancellationReasonCategories failed:", err));
+    apiFetchNextActions()
+      .then((data) => setNextActions(data ?? []))
+      .catch((err) => console.error("[DataContext] fetchNextActions failed:", err));
+    apiFetchBranchManagers()
+      .then((data) => {
+        setBranchManagers(data ?? []);
+        setBranchManagersSource(data ?? []);
+      })
+      .catch((err) => console.error("[DataContext] fetchBranchManagers failed:", err));
+    apiFetchWeeklyTrends()
+      .then((data) => {
+        setWeeklyTrends(data ?? { bm: [], gm: [] });
+        setWeeklyTrendsSource(data ?? { bm: [], gm: [] });
+      })
+      .catch((err) => console.error("[DataContext] fetchWeeklyTrends failed:", err));
+    apiFetchLeaderboardData()
+      .then((data) => setLeaderboardData(data ?? { branches: [], gms: [], ams: [], zones: [] }))
+      .catch((err) => console.error("[DataContext] fetchLeaderboardData failed:", err));
+  }, []);
+
+  /** Fetch GM tasks for all branches under a GM. Call from GM views on mount. */
+  const fetchGMTasks = useCallback(
+    async (gmBranches) => {
+      if (!USE_SUPABASE) return;
+      try {
+        const tasks = await apiFetchTasksForGM(gmBranches);
+        setGmTasks(tasks);
+      } catch (err) {
+        console.error("[DataContext] fetchTasksForGM failed:", err);
+      }
+    },
+    [USE_SUPABASE]
+  );
+
+  /** Save a GM directive on a lead */
+  const updateLeadDirective = useCallback(
+    async (leadId, directiveText) => {
+      if (USE_SUPABASE) {
+        const updated = await apiUpdateLeadDirective(leadId, directiveText);
+        setLeads((prev) => prev.map((l) => (l.id === leadId ? updated : l)));
+        return updated;
+      }
+      // Mock mode: optimistic local update
+      let updatedLead = null;
+      setLeads((prev) =>
+        prev.map((l) => {
+          if (l.id !== leadId) return l;
+          updatedLead = { ...l, gmDirective: directiveText };
+          return updatedLead;
+        })
+      );
+      return updatedLead;
+    },
+    [USE_SUPABASE]
+  );
+
+  /** Mark a lead as reviewed (status=Reviewed, archived=true) */
+  const markLeadReviewed = useCallback(
+    async (leadId) => {
+      if (USE_SUPABASE) {
+        const updated = await apiMarkLeadReviewed(leadId);
+        setLeads((prev) => prev.map((l) => (l.id === leadId ? updated : l)));
+        return updated;
+      }
+      // Mock mode: optimistic local update
+      let updatedLead = null;
+      setLeads((prev) =>
+        prev.map((l) => {
+          if (l.id !== leadId) return l;
+          updatedLead = { ...l, status: "Reviewed", archived: true };
+          return updatedLead;
+        })
+      );
+      return updatedLead;
+    },
+    [USE_SUPABASE]
+  );
 
   const updateLeadEnrichment = useCallback(
     async (leadId, enrichment, enrichmentLogEntry, status = null) => {
@@ -178,6 +320,41 @@ export function DataProvider({ children }) {
     [USE_SUPABASE]
   );
 
+  const fetchGmDirectives = useCallback(
+    async (leadId) => {
+      if (!USE_SUPABASE) return [];
+      return apiFetchGmDirectives(leadId);
+    },
+    [USE_SUPABASE]
+  );
+
+  const insertGmDirective = useCallback(
+    async (params) => {
+      if (!USE_SUPABASE) {
+        const mock = {
+          id: `gmd-mock-${Date.now()}`,
+          leadId: params.leadId,
+          directiveText: params.directiveText,
+          priority: params.priority ?? "normal",
+          dueDate: params.dueDate ?? null,
+          createdBy: params.createdBy ?? null,
+          createdByName: params.createdByName ?? "GM",
+          createdAt: new Date().toISOString(),
+        };
+        setLeads((prev) =>
+          prev.map((l) => (l.id === params.leadId ? { ...l, gmDirective: params.directiveText } : l))
+        );
+        return mock;
+      }
+      const result = await apiInsertGmDirective(params);
+      setLeads((prev) =>
+        prev.map((l) => (l.id === params.leadId ? { ...l, gmDirective: params.directiveText } : l))
+      );
+      return result;
+    },
+    [USE_SUPABASE]
+  );
+
   const fetchTasksForBranch = useCallback(
     async (branch) => {
       if (!USE_SUPABASE) return [];
@@ -218,6 +395,34 @@ export function DataProvider({ children }) {
     [USE_SUPABASE]
   );
 
+  const insertTask = useCallback(
+    async (params) => {
+      if (!USE_SUPABASE) {
+        const mockTask = {
+          id: `task-mock-${Date.now()}`,
+          title: params.title,
+          description: params.description ?? null,
+          dueDate: params.dueDate,
+          dueDateRaw: params.dueDate,
+          status: "Open",
+          priority: params.priority ?? "Medium",
+          leadId: params.leadId ?? null,
+          assignedTo: params.assignedTo ?? null,
+          assignedToName: params.assignedToName ?? null,
+          assignedBranch: params.assignedBranch ?? null,
+          createdBy: params.createdBy ?? null,
+          createdByName: params.createdByName ?? null,
+          source: params.source ?? "bm_created",
+          createdAt: new Date().toISOString(),
+          notesLog: [],
+        };
+        return mockTask;
+      }
+      return apiInsertTask(params);
+    },
+    [USE_SUPABASE]
+  );
+
   const createComplianceTasksForBranch = useCallback(
     async (params) => {
       if (!USE_SUPABASE) return { created: 0, errors: [{ error: "Supabase required" }] };
@@ -251,18 +456,33 @@ export function DataProvider({ children }) {
     loading,
     error,
     dataAsOfDate,
+    orgMapping,
+    gmTasks,
     refetchLeads,
+    refetchOrgMapping,
+    refetchDataAsOfDate,
     updateLeadEnrichment,
     updateLeadContact,
+    updateLeadDirective,
+    markLeadReviewed,
+    fetchGmDirectives,
+    insertGmDirective,
     fetchLeadActivities,
     fetchTasksForBranch,
     fetchTasksForLead,
     fetchTaskById,
+    fetchGMTasks,
     updateTaskStatus,
     appendTaskNote,
+    insertTask,
     createComplianceTasksForBranch,
     winsLearnings,
     submitWinsLearning,
+    cancellationReasonCategories,
+    nextActions,
+    branchManagers,
+    weeklyTrends,
+    leaderboardData,
     useSupabase: USE_SUPABASE,
   };
 

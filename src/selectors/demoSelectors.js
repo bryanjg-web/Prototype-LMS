@@ -1,7 +1,58 @@
-import { branchManagers, weeklyTrends, orgMapping, tasks } from "../data/mockData";
+import {
+  branchManagers as defaultBranchManagers,
+  weeklyTrends as defaultWeeklyTrends,
+  orgMapping as defaultOrgMapping,
+  tasks as defaultTasks,
+} from "../data/mockData";
+import { formatDateShort, formatWeekday, formatMonthYear } from "../utils/dateTime";
 
-// Demo "now" — set so "this week" aligns with mock data (Feb 17–23)
-const NOW = new Date("2026-02-22T09:00:00");
+/** Module-level data — updated by DataContext when Supabase provides real data. */
+let orgMapping = [...defaultOrgMapping];
+let branchManagers = [...defaultBranchManagers];
+let weeklyTrends = { ...defaultWeeklyTrends };
+
+/** Called by DataContext to swap in Supabase data at runtime. */
+export function setOrgMappingSource(newMapping) {
+  if (Array.isArray(newMapping) && newMapping.length > 0) {
+    orgMapping = newMapping;
+  }
+}
+
+export function setBranchManagersSource(newData) {
+  if (Array.isArray(newData) && newData.length > 0) {
+    branchManagers = newData;
+  }
+}
+
+export function setWeeklyTrendsSource(newData) {
+  if (newData && (newData.bm?.length || newData.gm?.length)) {
+    weeklyTrends = newData;
+  }
+}
+
+// Demo "now" — defaults to Feb 22 2026 for mock data, but updated dynamically
+// when Supabase data is loaded via setNowFromLeads().
+let NOW = new Date("2026-02-22T09:00:00");
+
+/**
+ * Derive NOW from the most recent week_of in the actual lead data.
+ * Sets NOW to Sunday 9:00 AM of the most recent data week so that
+ * "This week" captures the latest uploaded data.
+ */
+export function setNowFromLeads(leads) {
+  if (!Array.isArray(leads) || leads.length === 0) return;
+  let maxWeek = null;
+  for (const l of leads) {
+    const w = l.weekOf ?? l.week_of;
+    if (w && (!maxWeek || w > maxWeek)) maxWeek = w;
+  }
+  if (!maxWeek) return;
+  const monday = new Date(maxWeek + "T00:00:00");
+  if (isNaN(monday.getTime())) return;
+  const sunday = new Date(monday.getTime() + 6 * 86400000);
+  sunday.setHours(9, 0, 0, 0);
+  NOW = sunday;
+}
 
 const TREND_TIMEFRAME_WEEKS = { this_week: 1, trailing_4_weeks: 4, this_month: 5, this_year: 13 };
 
@@ -24,13 +75,16 @@ export function getNextComplianceMeetingDate() {
   const nextThursday = new Date(today);
   nextThursday.setDate(today.getDate() + (daysUntilThursday === 0 ? 0 : daysUntilThursday));
   const daysLeft = Math.ceil((nextThursday.getTime() - today.getTime()) / 86400000);
-  const dateStr = nextThursday.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric", year: "numeric" });
+  const dateStr = formatWeekday(nextThursday, true, true);
   return { date: nextThursday, dateStr, daysLeft };
 }
 
 export function getDateRangePresets() {
   const thisMonday = getMonday(NOW);
-  const thisMonthStart = new Date(NOW.getFullYear(), NOW.getMonth(), 1);
+  // Anchor "This month" on the data week's Monday so that when the week
+  // spans a month boundary (e.g. Mon Feb 24 → Sun Mar 2), "This month"
+  // covers February (where the data lives) instead of March (empty).
+  const thisMonthStart = new Date(thisMonday.getFullYear(), thisMonday.getMonth(), 1);
   const thisYearStart = new Date(NOW.getFullYear(), 0, 1);
   const trailing4WeeksEnd = new Date(NOW.getFullYear(), NOW.getMonth(), NOW.getDate(), 23, 59, 59);
   const trailing4WeeksStart = new Date(trailing4WeeksEnd.getTime() - 27 * 86400000); // 28 days = 4 weeks (0-indexed: 27 days back + today)
@@ -194,6 +248,51 @@ export function getMismatchReason(lead) {
 
 export function getLeadById(leads, id) {
   return (leads ?? []).find((l) => l.id === id);
+}
+
+/**
+ * Resolve GM identity for org_mapping lookup.
+ * Priority: gm_user_id (FK, survives re-uploads) → gm text name match → fallback.
+ * Returns the gm text value used in org_mapping so downstream selectors work unchanged.
+ */
+const GM_ALIASES = { "Vikram Rajagopalan": "Mike Torres" };
+
+export function resolveGMName(displayName, userId = null) {
+  if (userId) {
+    const byId = orgMapping.find((r) => r.gmUserId === userId);
+    if (byId) return byId.gm;
+  }
+  if (displayName && orgMapping.some((r) => r.gm === displayName)) return displayName;
+  if (displayName && GM_ALIASES[displayName]) {
+    const aliased = GM_ALIASES[displayName];
+    if (orgMapping.some((r) => r.gm === aliased)) return aliased;
+  }
+  const gmWithBranches = orgMapping.find((r) => r.gm && r.gm !== "— Unassigned —");
+  return gmWithBranches?.gm ?? "";
+}
+
+/**
+ * Resolve the BM display name for a branch.
+ * Falls back to the first matching lead's bmName when org_mapping has no real assignment.
+ */
+function resolveBMName(orgRow, branchLeads) {
+  const orgBm = orgRow?.bm;
+  if (orgBm && orgBm !== "— Unassigned —") return orgBm;
+  const fromLead = (branchLeads ?? []).find((l) => l.bmName && l.bmName !== "—")?.bmName;
+  return fromLead ?? "—";
+}
+
+/**
+ * Get branches for a GM user. Uses gm_user_id (FK) as primary lookup,
+ * falls back to gm text name match.
+ */
+export function getGMBranches(userId = null, gmName = null) {
+  if (userId) {
+    const byId = orgMapping.filter((r) => r.gmUserId === userId);
+    if (byId.length > 0) return byId.map((r) => r.branch);
+  }
+  if (gmName) return orgMapping.filter((r) => r.gm === gmName).map((r) => r.branch);
+  return [];
 }
 
 // Branch selectors
@@ -399,6 +498,200 @@ export function getOverdueFollowUpCount(leads) {
   return count;
 }
 
+/** Follow-up breakdown: overdue, due today, due this week — for dashboard surfacing. */
+export function getFollowUpBreakdown(leads, branch) {
+  const list = (leads ?? []).filter((l) => {
+    if (l.status === "Rented" || l.archived) return false;
+    if (branch && l.branch !== branch) return false;
+    return !!l.enrichment?.followUpDate;
+  });
+  let overdue = 0, dueToday = 0, dueThisWeek = 0;
+  const todayStr = NOW.toISOString().slice(0, 10);
+  const weekEnd = new Date(NOW);
+  weekEnd.setDate(weekEnd.getDate() + (7 - weekEnd.getDay()));
+  for (const l of list) {
+    const fd = l.enrichment.followUpDate;
+    const parsed = /^\d{4}-\d{2}-\d{2}$/.test(fd) ? new Date(fd + "T00:00:00") : new Date(fd);
+    if (isNaN(parsed.getTime())) continue;
+    const fdStr = parsed.toISOString().slice(0, 10);
+    if (parsed < NOW && fdStr !== todayStr) { overdue += 1; continue; }
+    if (fdStr === todayStr) { dueToday += 1; continue; }
+    if (parsed <= weekEnd) { dueThisWeek += 1; }
+  }
+  return { overdue, dueToday, dueThisWeek, total: overdue + dueToday + dueThisWeek };
+}
+
+/** Parse translog-style time "Feb 10, 9:15 AM" to timestamp (uses NOW year for demo). */
+function parseTranslogTime(timeStr) {
+  if (!timeStr) return 0;
+  try {
+    const year = NOW.getFullYear();
+    const d = new Date(`${timeStr}, ${year}`);
+    return isNaN(d.getTime()) ? 0 : d.getTime();
+  } catch {
+    return 0;
+  }
+}
+
+/** Activity Report: aggregated team activity (logins, comments, contact) for GM view. */
+export function getActivityReportData(leads, limitPerCategory = 10) {
+  const list = leads ?? [];
+  const logins = [];
+  const comments = [];
+  const contact = [];
+
+  // Logins: synthetic demo data from orgMapping BMs (no login tracking exists yet)
+  const bmNames = [...new Set(orgMapping.map((r) => r.bm).filter(Boolean))];
+  const loginOffsets = [0, 45, 120, 185, 320, 410]; // minutes ago
+  bmNames.slice(0, 6).forEach((name, i) => {
+    const ts = new Date(NOW.getTime() - loginOffsets[i] * 60 * 1000);
+    logins.push({ type: "login", user: name, time: ts.toISOString(), timestamp: ts.getTime(), action: "Logged in" });
+  });
+  logins.sort((a, b) => b.timestamp - a.timestamp);
+
+  // Comments: from leads with enrichment (reason/notes) — use lastActivity or initDtFinal as proxy
+  for (const lead of list) {
+    const hasComment = !!(lead.enrichment?.reason || lead.enrichment?.notes);
+    if (!hasComment) continue;
+    const ts = lead.lastActivity
+      ? new Date(lead.lastActivity).getTime()
+      : lead.initDtFinal
+        ? new Date(lead.initDtFinal + "T12:00:00").getTime()
+        : 0;
+    if (ts > 0) {
+      comments.push({
+        type: "comment",
+        user: lead.bmName ?? "—",
+        branch: lead.branch,
+        customer: lead.customer,
+        leadId: lead.id,
+        time: new Date(ts).toISOString(),
+        timestamp: ts,
+        action: "Added comment",
+        preview: (lead.enrichment?.reason || lead.enrichment?.notes || "").slice(0, 60),
+      });
+    }
+  }
+  // Also from enrichmentLog entries that look like comment actions
+  for (const lead of list) {
+    for (const entry of lead.enrichmentLog ?? []) {
+      const action = (entry.action || "").toLowerCase();
+      if (action.includes("reason") || action.includes("note") || action.includes("comment")) {
+        const ts = entry.timestamp ?? (entry.time ? parseTranslogTime(entry.time) || new Date(entry.time).getTime() : 0);
+        if (ts > 0) {
+          comments.push({
+            type: "comment",
+            user: entry.author ?? lead.bmName ?? "—",
+            branch: lead.branch,
+            customer: lead.customer,
+            leadId: lead.id,
+            time: new Date(ts).toISOString(),
+            timestamp: ts,
+            action: entry.action || "Added comment",
+            preview: (lead.enrichment?.reason || lead.enrichment?.notes || "").slice(0, 60),
+          });
+        }
+      }
+    }
+  }
+  comments.sort((a, b) => b.timestamp - a.timestamp);
+
+  // Contact: from translog (Call, SMS, Email) and enrichmentLog contact entries
+  for (const lead of list) {
+    for (const ev of lead.translog ?? []) {
+      const ts = parseTranslogTime(ev.time);
+      if (ts > 0) {
+        contact.push({
+          type: "contact",
+          user: lead.bmName ?? "—",
+          branch: lead.branch,
+          customer: lead.customer,
+          leadId: lead.id,
+          time: new Date(ts).toISOString(),
+          timestamp: ts,
+          action: `${ev.event ?? "Contact"} — ${ev.outcome ?? ""}`.trim(),
+          event: ev.event,
+        });
+      }
+    }
+    for (const entry of lead.enrichmentLog ?? []) {
+      const action = (entry.action || "").toLowerCase();
+      if (action.includes("email") || action.includes("sms") || action.includes("call")) {
+        const ts = entry.timestamp ?? (entry.time ? parseTranslogTime(entry.time) || new Date(entry.time).getTime() : 0);
+        if (ts > 0) {
+          contact.push({
+            type: "contact",
+            user: entry.author ?? lead.bmName ?? "—",
+            branch: lead.branch,
+            customer: lead.customer,
+            leadId: lead.id,
+            time: new Date(ts).toISOString(),
+            timestamp: ts,
+            action: entry.action || "Contact",
+          });
+        }
+      }
+    }
+  }
+  contact.sort((a, b) => b.timestamp - a.timestamp);
+
+  return {
+    logins: logins.slice(0, limitPerCategory),
+    comments: comments.slice(0, limitPerCategory),
+    contact: contact.slice(0, limitPerCategory),
+    all: [...logins, ...comments, ...contact]
+      .sort((a, b) => b.timestamp - a.timestamp)
+      .slice(0, limitPerCategory),
+  };
+}
+
+/** Aggregate recent activity from leads' enrichmentLog (most recent actions across all leads). */
+export function getRecentActivity(leads, branch, limit = 8) {
+  const branchLeads = (leads ?? []).filter((l) => !branch || l.branch === branch);
+  const entries = [];
+  for (const lead of branchLeads) {
+    const log = lead.enrichmentLog ?? [];
+    for (const entry of log) {
+      entries.push({
+        ...entry,
+        leadId: lead.id,
+        customer: lead.customer,
+        reservationId: lead.reservationId,
+        leadStatus: lead.status,
+      });
+    }
+    if (lead.lastActivity) {
+      entries.push({
+        time: lead.lastActivity,
+        action: "Last activity recorded",
+        leadId: lead.id,
+        customer: lead.customer,
+        reservationId: lead.reservationId,
+        leadStatus: lead.status,
+        source: "system",
+      });
+    }
+  }
+  entries.sort((a, b) => new Date(b.time ?? 0) - new Date(a.time ?? 0));
+  return entries.slice(0, limit);
+}
+
+/** Count of leads with an active (non-empty) GM directive for a branch. */
+export function getDirectiveCount(leads, branch) {
+  return (leads ?? []).filter((l) => {
+    if (branch && l.branch !== branch) return false;
+    return !!l.gmDirective && !l.archived;
+  }).length;
+}
+
+/** Leads with active GM directives for a branch. */
+export function getLeadsWithDirectives(leads, branch) {
+  return (leads ?? []).filter((l) => {
+    if (branch && l.branch !== branch) return false;
+    return !!l.gmDirective && !l.archived;
+  });
+}
+
 /** Priority sort: Overdue > Cancelled no comment > Unused no comment > Unused has comment > Cancelled has comment > Rented */
 const PRIORITY_ORDER = { overdue: 0, cancelled_no_comment: 1, unused_no_comment: 2, unused_has_comment: 3, cancelled_has_comment: 4, rented: 5 };
 function getLeadPriority(lead) {
@@ -469,9 +762,9 @@ export function getBranchConversionRateForWeek(leads, branch, weekOf) {
 export function formatWeekLabel(weekOf) {
   if (!weekOf) return "—";
   const d = new Date(weekOf + "T00:00:00");
-  const mon = d.toLocaleDateString("en-AU", { month: "short", day: "numeric" });
+  const mon = formatDateShort(d);
   const sun = new Date(d.getTime() + 6 * 86400000);
-  const sunStr = sun.toLocaleDateString("en-AU", { month: "short", day: "numeric" });
+  const sunStr = formatDateShort(sun);
   return `${mon}–${sunStr}`;
 }
 
@@ -487,8 +780,9 @@ export function getInsuranceCompanies(leads) {
 }
 
 // Tasks for branch (BM view)
-export function getTasksForBranch(branch) {
-  return tasks.filter((t) => t.assignedBranch === branch);
+export function getTasksForBranch(branch, tasksList) {
+  const list = tasksList ?? defaultTasks;
+  return list.filter((t) => t.assignedBranch === branch);
 }
 
 /** Count of open tasks (status !== Done) for a branch */
@@ -778,19 +1072,20 @@ export function getAverageTimeToContactMinutes(leads, dateRange = null, branch =
 }
 
 // Task by id (for task detail view)
-export function getTaskById(taskId) {
-  return tasks.find((t) => t.id === taskId) ?? null;
+export function getTaskById(taskId, tasksList) {
+  const list = tasksList ?? defaultTasks;
+  return list.find((t) => t.id === taskId) ?? null;
 }
 
-// Tasks for a specific lead (pass tasksList for override, else uses mock tasks)
+// Tasks for a specific lead
 export function getTasksForLead(leadId, tasksList) {
-  const list = tasksList ?? tasks;
+  const list = tasksList ?? defaultTasks;
   return list.filter((t) => t.leadId === leadId);
 }
 
 /** Open tasks across GM's branches — for meeting prep "chase up" view. Sorted by urgency: overdue first, then due soon, then by priority. */
 export function getTasksForGMBranches(tasksList, gmName = "D. Williams") {
-  const list = tasksList ?? tasks;
+  const list = tasksList ?? defaultTasks;
   const myBranches = orgMapping.filter((r) => r.gm === gmName).map((r) => r.branch);
   const open = list.filter((t) => t.status !== "Done" && myBranches.includes(t.assignedBranch));
   const now = new Date(NOW);
@@ -811,7 +1106,7 @@ export function getTasksForGMBranches(tasksList, gmName = "D. Williams") {
 
 /** GM tasks progress: total, completed, open, and progress % for meeting prep modules. */
 export function getGMTasksProgress(tasksList, gmName = "D. Williams") {
-  const list = tasksList ?? tasks;
+  const list = tasksList ?? defaultTasks;
   const myBranches = orgMapping.filter((r) => r.gm === gmName).map((r) => r.branch);
   const gmTasks = list.filter((t) => myBranches.includes(t.assignedBranch));
   const total = gmTasks.length;
@@ -824,8 +1119,8 @@ export function getGMTasksProgress(tasksList, gmName = "D. Williams") {
 function chartGranularity(presetKey, dateRange) {
   if (presetKey === "this_week") return "day";
   if (presetKey === "trailing_4_weeks") return "week";
-  if (presetKey === "this_month") return "month";
-  if (presetKey === "this_year") return "year";
+  if (presetKey === "this_month") return "week";
+  if (presetKey === "this_year") return "month";
   if (dateRange?.start && dateRange?.end) {
     const span = (dateRange.end - dateRange.start) / 86400000;
     if (span <= 14) return "day";
@@ -1019,9 +1314,7 @@ function getPeriodsForRange(dateRange, presetKey) {
       const key = d.toISOString().split("T")[0];
       if (seen.has(key)) continue;
       seen.add(key);
-      const label = isWeekPreset
-        ? d.toLocaleDateString("en-AU", { weekday: "short" })
-        : d.toLocaleDateString("en-AU", { month: "short", day: "numeric" });
+      const label = isWeekPreset ? formatWeekday(d) : formatDateShort(d);
       periods.push({ key, label });
     }
   } else if (gran === "week") {
@@ -1031,7 +1324,7 @@ function getPeriodsForRange(dateRange, presetKey) {
       const key = cur.toISOString().split("T")[0];
       if (!seen.has(key)) {
         seen.add(key);
-        periods.push({ key, label: cur.toLocaleDateString("en-AU", { month: "short", day: "numeric" }) });
+        periods.push({ key, label: formatDateShort(cur) });
       }
       cur.setDate(cur.getDate() + 7);
     }
@@ -1049,7 +1342,7 @@ function getPeriodsForRange(dateRange, presetKey) {
       const key = `${cur.getFullYear()}-${String(cur.getMonth() + 1).padStart(2, "0")}`;
       if (!seen.has(key)) {
         seen.add(key);
-        periods.push({ key, label: cur.toLocaleDateString("en-AU", { month: "short", year: "2-digit" }) });
+        periods.push({ key, label: formatMonthYear(cur) });
       }
       cur.setMonth(cur.getMonth() + 1);
     }
@@ -1214,8 +1507,12 @@ export function getTrendsChartDataStacked(leads, dateRange, branch, groupBy, pre
 // ——— GM Dashboard selectors (HER-39 through HER-42) ———
 
 /** GM dashboard stats from real leads. No branch filter — GM sees all branches. Excludes Reviewed. */
-export function getGMDashboardStats(leads, dateRange = null) {
+export function getGMDashboardStats(leads, dateRange = null, gmName = null) {
   let filtered = leads ?? [];
+  if (gmName) {
+    const myBranches = orgMapping.filter((r) => r.gm === gmName).map((r) => r.branch);
+    filtered = filtered.filter((l) => myBranches.includes(l.branch));
+  }
   if (dateRange?.start || dateRange?.end) {
     filtered = filtered.filter((l) => leadInDateRange(l, dateRange.start, dateRange.end));
   }
@@ -1261,8 +1558,12 @@ export function getGMDashboardStats(leads, dateRange = null) {
  * already used in the time-to-contact distribution). This is David's "Bucket 3" — leads
  * that slipped through entirely without a single call, email, or SMS from branch or HRD.
  */
-export function getUnreachableLeads(leads, dateRange = null) {
+export function getUnreachableLeads(leads, dateRange = null, gmName = null) {
   let filtered = leads ?? [];
+  if (gmName) {
+    const myBranches = orgMapping.filter((r) => r.gm === gmName).map((r) => r.branch);
+    filtered = filtered.filter((l) => myBranches.includes(l.branch));
+  }
   if (dateRange?.start || dateRange?.end) {
     filtered = filtered.filter((l) => leadInDateRange(l, dateRange.start, dateRange.end));
   }
@@ -1280,15 +1581,19 @@ export function getUnreachableLeads(leads, dateRange = null) {
  * Returns count, pct (of all Cancelled/Unused), and a per-branch breakdown for the
  * expandable leads table.
  */
-export function getUnreachableLeadsStats(leads, dateRange = null) {
+export function getUnreachableLeadsStats(leads, dateRange = null, gmName = null) {
   let allFiltered = leads ?? [];
+  if (gmName) {
+    const myBranches = orgMapping.filter((r) => r.gm === gmName).map((r) => r.branch);
+    allFiltered = allFiltered.filter((l) => myBranches.includes(l.branch));
+  }
   if (dateRange?.start || dateRange?.end) {
     allFiltered = allFiltered.filter((l) => leadInDateRange(l, dateRange.start, dateRange.end));
   }
   allFiltered = allFiltered.filter((l) => l.status !== "Reviewed");
   const actionable = allFiltered.filter((l) => l.status === "Cancelled" || l.status === "Unused");
 
-  const unreachable = getUnreachableLeads(leads, dateRange);
+  const unreachable = getUnreachableLeads(leads, dateRange, gmName);
   const count = unreachable.length;
   const pct = actionable.length ? Math.round((count / actionable.length) * 100) : 0;
 
@@ -1373,6 +1678,12 @@ export function getGMMetricTrendByWeek(leads, opts = {}) {
       const bc = withContact.filter((l) => (l.firstContactBy ?? l.first_contact_by) === "branch").length;
       return Math.round((bc / withContact.length) * 100);
     }
+    if (metricKey === "cancelled_unreviewed") {
+      return weekLeads.filter((l) => l.status === "Cancelled" && !l.archived && !l.gmDirective).length;
+    }
+    if (metricKey === "unused_overdue") {
+      return weekLeads.filter((l) => l.status === "Unused" && (l.daysOpen ?? 0) > 5).length;
+    }
     return null;
   };
 
@@ -1381,6 +1692,8 @@ export function getGMMetricTrendByWeek(leads, opts = {}) {
     if (m === "comment_rate") return "Comment rate";
     if (m === "contacted_within_30_min") return "Contacted within 30 min";
     if (m === "branch_vs_hrd_split") return "Branch %";
+    if (m === "cancelled_unreviewed") return "Cancelled unreviewed";
+    if (m === "unused_overdue") return "Unused overdue";
     return "Value";
   };
 
@@ -1450,7 +1763,7 @@ export function getGMBranchLeaderboard(leads, dateRange, sortMetric = "conversio
     const row = orgMapping.find((r) => r.branch === branch);
     return {
       branch,
-      bmName: row?.bm ?? "—",
+      bmName: resolveBMName(row, branchLeads),
       zone: row?.zone ?? "—",
       gm: row?.gm ?? "—",
       total,
@@ -1465,7 +1778,59 @@ export function getGMBranchLeaderboard(leads, dateRange, sortMetric = "conversio
     };
   });
 
-  const sortKey = sortMetric;
+  // Compute per-metric improvement delta (current - previous period) for each branch
+  if (dateRange) {
+    const duration = dateRange.end - dateRange.start;
+    const prevRange = { start: new Date(dateRange.start - duration), end: new Date(dateRange.start) };
+    for (const row of branchData) {
+      const prevLeads = getLeadsForBranchInRange(leads ?? [], prevRange, row.branch);
+      const prevTotal = prevLeads.length;
+      const prevRented = prevLeads.filter((l) => l.status === "Rented").length;
+      const prevConversion = prevTotal > 0 ? Math.round((prevRented / prevTotal) * 100) : null;
+      row.improvementDelta = (row.conversionRate != null && prevConversion != null)
+        ? row.conversionRate - prevConversion
+        : null;
+
+      const prevW30 = prevLeads.filter((l) => (l.contactRange ?? l.contact_range) === "(a)<30min").length;
+      row.prevPctWithin30 = prevTotal > 0 ? Math.round((prevW30 / prevTotal) * 100) : null;
+      const prevBc = prevLeads.filter((l) => (l.firstContactBy ?? l.first_contact_by) === "branch").length;
+      const prevHc = prevLeads.filter((l) => (l.firstContactBy ?? l.first_contact_by) === "hrd").length;
+      row.prevBranchHrdPct = (prevBc + prevHc) > 0 ? Math.round((prevBc / (prevBc + prevHc)) * 100) : null;
+      const prevActionable = prevLeads.filter((l) => l.status === "Cancelled" || l.status === "Unused");
+      const prevWithComments = prevActionable.filter((l) => l.enrichment?.reason || l.enrichment?.notes);
+      row.prevCommentRate = prevActionable.length > 0 ? Math.round((prevWithComments.length / prevActionable.length) * 100) : (prevTotal > 0 ? 100 : null);
+      row.prevCancelledUnreviewed = prevLeads.filter((l) => l.status === "Cancelled" && !l.archived && !l.gmDirective).length;
+      row.prevUnusedOverdue = prevLeads.filter((l) => l.status === "Unused" && (l.daysOpen ?? 0) > 5).length;
+      row.prevConversionRate = prevConversion;
+      row.cancelledUnreviewed = branchData.find((b) => b.branch === row.branch)
+        ? (leads ?? []).filter((l) => l.branch === row.branch && leadInDateRange(l, dateRange.start, dateRange.end) && l.status !== "Reviewed" && l.status === "Cancelled" && !l.archived && !l.gmDirective).length
+        : 0;
+      row.unusedOverdue = (leads ?? []).filter((l) => l.branch === row.branch && leadInDateRange(l, dateRange.start, dateRange.end) && l.status !== "Reviewed" && l.status === "Unused" && (l.daysOpen ?? 0) > 5).length;
+    }
+  } else {
+    for (const row of branchData) {
+      row.improvementDelta = null;
+      row.prevPctWithin30 = null;
+      row.prevBranchHrdPct = null;
+      row.prevCommentRate = null;
+      row.prevCancelledUnreviewed = null;
+      row.prevUnusedOverdue = null;
+      row.prevConversionRate = null;
+      row.cancelledUnreviewed = 0;
+      row.unusedOverdue = 0;
+    }
+  }
+
+  // Assign quartile bands (Q1=top 25% ... Q4=bottom 25%)
+  const quartileSorted = [...branchData].sort((a, b) => (b.conversionRate ?? -1) - (a.conversionRate ?? -1));
+  const n = quartileSorted.length;
+  quartileSorted.forEach((row, i) => {
+    if (n === 0) { row.quartile = null; return; }
+    const pct = i / n;
+    row.quartile = pct < 0.25 ? 1 : pct < 0.5 ? 2 : pct < 0.75 ? 3 : 4;
+  });
+
+  const sortKey = sortMetric === "mostImproved" ? "improvementDelta" : sortMetric;
   const getVal = (d) => d[sortKey] ?? -1;
   const sorted = [...branchData].sort((a, b) => getVal(b) - getVal(a));
   sorted.forEach((d, i) => { d.rank = i + 1; });
@@ -1491,10 +1856,14 @@ export function getGMBranchLeaderboard(leads, dateRange, sortMetric = "conversio
 }
 
 /** GM leads list: merged cancelled + unused, filterable, sorted by priority. */
-export function getGMLeads(leads, dateRange = null, filters = {}) {
+export function getGMLeads(leads, dateRange = null, filters = {}, gmName = null) {
   const { statusFilter, bmFilter, branchFilter, insuranceFilter, searchQuery } = filters;
 
   let filtered = leads ?? [];
+  if (gmName) {
+    const myBranches = orgMapping.filter((r) => r.gm === gmName).map((r) => r.branch);
+    filtered = filtered.filter((l) => myBranches.includes(l.branch));
+  }
   if (dateRange?.start || dateRange?.end) {
     filtered = filtered.filter((l) => leadInDateRange(l, dateRange.start, dateRange.end));
   }
@@ -1544,7 +1913,7 @@ export function getGMMeetingPrepData(leads, dateRange = null, gmName = "D. Willi
 
     return {
       branch,
-      bmName: row?.bm ?? "—",
+      bmName: resolveBMName(row, branchLeads),
       total,
       cancelledUnreviewed,
       unusedOverdue,
@@ -1575,8 +1944,12 @@ export function getGMOutstandingCount(leads, dateRange = null, gmName = "D. Will
 }
 
 /** Count of leads pending GM review (cancelled unreviewed + unused overdue). */
-export function getGMLeadsToReviewCount(leads, dateRange = null) {
+export function getGMLeadsToReviewCount(leads, dateRange = null, gmName = null) {
   let filtered = leads ?? [];
+  if (gmName) {
+    const myBranches = orgMapping.filter((r) => r.gm === gmName).map((r) => r.branch);
+    filtered = filtered.filter((l) => myBranches.includes(l.branch));
+  }
   if (dateRange?.start || dateRange?.end) {
     filtered = filtered.filter((l) => leadInDateRange(l, dateRange.start, dateRange.end));
   }
@@ -1610,8 +1983,9 @@ export function getConversionByBranch(leads, dateRange, compRange = null, gmName
 
     const delta = conversionRate !== null && prevConversionRate !== null ? conversionRate - prevConversionRate : null;
     const row = orgMapping.find((r) => r.branch === branch);
+    const allBranchLeads = (leads ?? []).filter((l) => l.branch === branch);
 
-    return { branch, bmName: row?.bm ?? "—", total, rented, cancelled, unused, conversionRate, prevConversionRate, delta };
+    return { branch, bmName: resolveBMName(row, allBranchLeads), total, rented, cancelled, unused, conversionRate, prevConversionRate, delta };
   });
 
   return data
@@ -1663,6 +2037,46 @@ export function getConversionByInsurer(leads, dateRange, compRange = null, gmNam
     .map((d, i) => ({ ...d, rank: i + 1 }));
 }
 
+export function getConversionByBodyShop(leads, dateRange, compRange = null, gmName = "D. Williams") {
+  const myBranches = orgMapping.filter((r) => r.gm === gmName).map((r) => r.branch);
+
+  let currLeads = (leads ?? []).filter((l) => myBranches.includes(l.branch));
+  if (dateRange?.start || dateRange?.end) {
+    currLeads = currLeads.filter((l) => leadInDateRange(l, dateRange.start, dateRange.end));
+  }
+
+  let prevLeads = (leads ?? []).filter((l) => myBranches.includes(l.branch));
+  if (compRange?.start || compRange?.end) {
+    prevLeads = prevLeads.filter((l) => leadInDateRange(l, compRange.start, compRange.end));
+  } else {
+    prevLeads = [];
+  }
+
+  const shops = [...new Set(currLeads.map((l) => l.bodyShop ?? l.body_shop).filter(Boolean))];
+
+  const data = shops.map((shop) => {
+    const curr = currLeads.filter((l) => (l.bodyShop ?? l.body_shop) === shop);
+    const prev = prevLeads.filter((l) => (l.bodyShop ?? l.body_shop) === shop);
+
+    const total = curr.length;
+    const rented = curr.filter((l) => l.status === "Rented").length;
+    const cancelled = curr.filter((l) => l.status === "Cancelled").length;
+    const unused = curr.filter((l) => l.status === "Unused").length;
+    const conversionRate = total ? Math.round((rented / total) * 100) : null;
+
+    const prevTotal = prev.length;
+    const prevRented = prev.filter((l) => l.status === "Rented").length;
+    const prevConversionRate = prevTotal ? Math.round((prevRented / prevTotal) * 100) : null;
+    const delta = conversionRate !== null && prevConversionRate !== null ? conversionRate - prevConversionRate : null;
+
+    return { bodyShop: shop, total, rented, cancelled, unused, conversionRate, prevConversionRate, delta };
+  });
+
+  return data
+    .sort((a, b) => b.total - a.total)
+    .map((d, i) => ({ ...d, rank: i + 1 }));
+}
+
 /**
  * Week-by-week stacked data for a branch (or zone-level if branch = null).
  * Always returns the last 4 calendar weeks. Used for presentation stacked bar charts.
@@ -1700,7 +2114,7 @@ export function getStackedWeeklyByBranch(leads, branch = null, gmName = "D. Will
     .slice(-4)
     .map(([key, v]) => ({
       weekOf: key,
-      label: v.date.toLocaleDateString("en-US", { month: "short", day: "numeric" }),
+      label: formatDateShort(v.date),
       rented: v.rented,
       cancelled: v.cancelled,
       unused: v.unused,
@@ -1715,4 +2129,169 @@ export function getWinsLearningsForGM(winsLearnings, gmName = "D. Williams") {
   return (winsLearnings ?? [])
     .filter((e) => e.gmName === gmName)
     .sort((a, b) => new Date(b.createdAt ?? b.weekOf) - new Date(a.createdAt ?? a.weekOf));
+}
+
+/**
+ * Spot Check: branch-level health snapshot for a single branch.
+ * Returns metrics, untouched leads, and mismatch leads.
+ */
+export function getSpotCheckData(leads, branch, dateRange = null) {
+  const branchLeads = getLeadsForBranchInRange(leads ?? [], dateRange, branch);
+  const total = branchLeads.length;
+  const rented = branchLeads.filter((l) => l.status === "Rented").length;
+  const conversionRate = total > 0 ? Math.round((rented / total) * 100) : 0;
+  const contacted = branchLeads.filter((l) => {
+    const cr = l.contactRange ?? l.contact_range;
+    return cr && cr !== "No Contact" && cr !== "NO CONTACT";
+  }).length;
+  const within30 = branchLeads.filter((l) => (l.contactRange ?? l.contact_range) === "(a)<30min").length;
+  const pctWithin30 = total > 0 ? Math.round((within30 / total) * 100) : 0;
+  const branchContact = branchLeads.filter((l) => (l.firstContactBy ?? l.first_contact_by) === "branch").length;
+  const branchPct = contacted > 0 ? Math.round((branchContact / contacted) * 100) : 0;
+  const enriched = branchLeads.filter((l) => l.enrichmentComplete || (l.enrichment?.reason || l.enrichment?.notes)).length;
+  const commentRate = total > 0 ? Math.round((enriched / total) * 100) : 0;
+
+  // Untouched: cancelled or unused with zero contact attempt
+  const untouched = branchLeads.filter((l) => {
+    if (l.status !== "Cancelled" && l.status !== "Unused") return false;
+    const cr = l.contactRange ?? l.contact_range;
+    const hasContact = cr && cr !== "No Contact" && cr !== "NO CONTACT";
+    const hasTranslog = (l.translog ?? []).some((t) =>
+      ["Call", "Email", "SMS", "Contact Attempt"].some((k) => (t.type ?? t.detail ?? "").includes(k))
+    );
+    return !hasContact && !hasTranslog;
+  });
+
+  // Mismatches
+  const mismatches = branchLeads.filter((l) => l.mismatch);
+
+  return {
+    total,
+    rented,
+    conversionRate,
+    pctWithin30,
+    branchPct,
+    commentRate,
+    untouched,
+    mismatches,
+  };
+}
+
+/** Zone-wide benchmark averages for comparison with a single branch. */
+export function getZoneBenchmark(leads, dateRange = null, gmName = "D. Williams") {
+  const myBranches = orgMapping.filter((r) => r.gm === gmName).map((r) => r.branch);
+  const stats = getGMDashboardStats(
+    (leads ?? []).filter((l) => myBranches.includes(l.branch)),
+    dateRange
+  );
+  return {
+    conversionRate: stats.conversionRate,
+    pctWithin30: stats.pctWithin30,
+    branchPct: stats.branchPct,
+    commentCompliance: stats.commentCompliance,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Upcoming Communications (computed from lead state + rules)
+// ---------------------------------------------------------------------------
+
+import { COMMUNICATION_RULES, EMAIL_TEMPLATES, SMS_TEMPLATES } from "../config/communicationRules";
+
+function parseTimeToCancelHours(timeToCancel) {
+  if (!timeToCancel) return null;
+  let hours = 0;
+  const dayMatch = timeToCancel.match(/(\d+)d/);
+  const hourMatch = timeToCancel.match(/(\d+)h/);
+  if (dayMatch) hours += parseInt(dayMatch[1], 10) * 24;
+  if (hourMatch) hours += parseInt(hourMatch[1], 10);
+  return hours || null;
+}
+
+function hasManualContact(contactActivities, type) {
+  return (contactActivities ?? []).some((a) => {
+    if (type === "manual_email") return a.type === "email";
+    if (type === "manual_sms") return a.type === "sms";
+    return ["email", "sms", "call"].includes(a.type);
+  });
+}
+
+/**
+ * Compute upcoming (pending) automated communications for a lead.
+ * Returns items sorted by scheduledAt (soonest first).
+ */
+export function getUpcomingCommunications(lead, contactActivities = []) {
+  if (!lead) return [];
+
+  const results = [];
+  const initDate = lead.initDtFinal ? new Date(lead.initDtFinal + "T09:00:00") : null;
+
+  for (const rule of COMMUNICATION_RULES) {
+    if (rule.requiresEmail && (!lead.email || !lead.email.includes("@"))) continue;
+    if (rule.requiresPhone && (!lead.phone || lead.phone.length < 10)) continue;
+    if (rule.statusFilter && !rule.statusFilter.includes(lead.status)) continue;
+    if (rule.extraCondition && !rule.extraCondition(lead)) continue;
+
+    let scheduledAt = null;
+    if (rule.anchor === "now") {
+      scheduledAt = new Date(NOW.getTime() + rule.delayHours * 3600000);
+    } else if (rule.anchor === "initDtFinal" && initDate) {
+      scheduledAt = new Date(initDate.getTime() + rule.delayHours * 3600000);
+    } else if (rule.anchor === "cancellation" && initDate) {
+      const cancelHours = parseTimeToCancelHours(lead.timeToCancel);
+      if (cancelHours) {
+        const cancelTime = new Date(initDate.getTime() + cancelHours * 3600000);
+        scheduledAt = new Date(cancelTime.getTime() + rule.delayHours * 3600000);
+      }
+    }
+
+    if (!scheduledAt || scheduledAt <= NOW) continue;
+
+    if (rule.suppressWhen && hasManualContact(contactActivities, rule.suppressWhen)) {
+      continue;
+    }
+
+    const customer = lead.customer ?? "Customer";
+    const branch = lead.branch ?? "your branch";
+    const resId = lead.reservationId ?? "";
+    let contentPreview = null;
+
+    if (rule.type === "email") {
+      const tpl = EMAIL_TEMPLATES[rule.templateKey];
+      if (tpl) contentPreview = { subject: tpl.subject(resId), body: tpl.body(customer, branch, resId) };
+    } else {
+      const tpl = SMS_TEMPLATES[rule.templateKey];
+      if (tpl) contentPreview = { body: tpl.body(customer, branch, resId) };
+    }
+
+    results.push({
+      id: rule.id,
+      type: rule.type,
+      label: rule.label,
+      reason: rule.reason,
+      scheduledAt,
+      recipient: rule.type === "email" ? lead.email : lead.phone,
+      contentPreview,
+    });
+  }
+
+  return results.sort((a, b) => a.scheduledAt - b.scheduledAt);
+}
+
+/** Branches that have red flags (untouched leads or mismatches) for the spot check module card. */
+export function getBranchesWithFlags(leads, dateRange = null, gmName = "D. Williams") {
+  const myBranches = orgMapping.filter((r) => r.gm === gmName);
+  const flagged = [];
+  for (const row of myBranches) {
+    const data = getSpotCheckData(leads, row.branch, dateRange);
+    if (data.untouched.length > 0 || data.mismatches.length > 0) {
+      flagged.push({
+        branch: row.branch,
+        bm: row.bm,
+        untouched: data.untouched.length,
+        mismatches: data.mismatches.length,
+      });
+    }
+  }
+  return { flaggedBranches: flagged.length, totalBranches: myBranches.length, flagged };
 }

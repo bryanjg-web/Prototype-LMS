@@ -35,48 +35,63 @@ const templates = {
   general: {
     subject: (res: string) => `Your Hertz reservation – ${res}`,
     body: (c: string, b: string, res: string) =>
-      `Hi ${c},\n\nThis is ${b} regarding your Hertz reservation ${res}.\n\nPlease contact us if you have any questions about your rental.\n\nThank you,\nHertz`,
+      `Hi ${c},\n\n` +
+      `Thank you for choosing Hertz — we truly appreciate your business. ` +
+      `We're reaching out from our ${b} location regarding your reservation ${res}.\n\n` +
+      `Our goal is to provide a seamless and reliable experience every time you rent with us. ` +
+      `If there's anything we can help with — whether it's adjusting your reservation, ` +
+      `answering questions, or simply making your trip a little easier — please don't hesitate to reach out.\n\n` +
+      `We're here for you and look forward to getting you on the road.\n\n` +
+      `Warm regards,\nThe Hertz ${b} Team`,
   },
 
   confirmation: {
-    subject: (res: string) => `Your rental is confirmed – ${res}`,
+    subject: (res: string) => `Great news — your rental is confirmed – ${res}`,
     body: (c: string, b: string, res: string) =>
       `Hi ${c},\n\n` +
-      `Great news — your Hertz rental reservation ${res} has been confirmed.\n\n` +
+      `Great news — your Hertz rental reservation ${res} has been confirmed, ` +
+      `and we're excited to help you get on your way.\n\n` +
       `Your vehicle is ready for collection at our ${b} location. ` +
       `Please bring a valid driver's licence and the credit card used at the time of booking.\n\n` +
-      `If you need to adjust your pickup time or have any questions, ` +
-      `don't hesitate to contact us at ${b}.\n\n` +
-      `We look forward to getting you on the road.\n\n` +
-      `Kind regards,\nThe Hertz ${b} Team`,
+      `If you need to adjust your pickup time or have any questions at all, ` +
+      `we're happy to help — don't hesitate to reach out. ` +
+      `Our goal is to make your rental experience as smooth and dependable as possible.\n\n` +
+      `We truly value your trust in Hertz and look forward to welcoming you.\n\n` +
+      `Warm regards,\nThe Hertz ${b} Team`,
   },
 
   reminder: {
     subject: (res: string) => `Friendly reminder – your Hertz rental ${res} is ready`,
     body: (c: string, b: string, res: string) =>
       `Hi ${c},\n\n` +
+      `We hope this message finds you well. ` +
       `Just a friendly reminder that your Hertz rental reservation ${res} ` +
-      `is confirmed and your vehicle is still waiting for you at ${b}.\n\n` +
-      `If your plans have changed or you'd like to reschedule your pickup, ` +
-      `please give us a call so we can help you out.\n\n` +
-      `We want to make sure everything goes smoothly for your trip.\n\n` +
-      `Kind regards,\nThe Hertz ${b} Team`,
+      `is confirmed, and your vehicle is reserved and waiting for you at our ${b} location.\n\n` +
+      `We understand that plans can change — and that's perfectly okay. ` +
+      `If you need to adjust your pickup time or reschedule, ` +
+      `we're happy to work with you to find a time that suits you best.\n\n` +
+      `We want to make sure everything goes smoothly for your trip, ` +
+      `so please don't hesitate to let us know how we can help.\n\n` +
+      `Warm regards,\nThe Hertz ${b} Team`,
   },
 
   final_attempt: {
-    subject: (res: string) => `Important: We've been trying to reach you – ${res}`,
+    subject: (res: string) => `We'd love to hear from you – ${res}`,
     body: (c: string, b: string, res: string) =>
       `Hi ${c},\n\n` +
-      `We have been trying to reach you regarding your Hertz rental reservation ${res}, ` +
-      `which was previously confirmed for pickup at ${b}.\n\n` +
-      `Unfortunately, we haven't been able to get in touch by phone or SMS. ` +
-      `We'd like to make sure you still plan to collect your vehicle so we can keep it reserved for you.\n\n` +
-      `Please contact us at ${b} at your earliest convenience. ` +
-      `If we don't hear from you within the next 48 hours, ` +
-      `your reservation may be released to the next customer on the waitlist.\n\n` +
-      `We genuinely want to ensure you receive your vehicle — ` +
-      `please don't hesitate to get in touch.\n\n` +
-      `Kind regards,\nThe Hertz ${b} Team`,
+      `We've been trying to reach you regarding your Hertz reservation ${res}, ` +
+      `which was confirmed for pickup at our ${b} location — ` +
+      `and we want to make sure everything is okay.\n\n` +
+      `We understand that life gets busy, and sometimes plans change unexpectedly. ` +
+      `We'd love to hear from you so we can keep your reservation in place, ` +
+      `or help you reschedule if that works better for your plans.\n\n` +
+      `To make sure we can continue to hold your vehicle, ` +
+      `please get in touch with us at ${b} at your earliest convenience. ` +
+      `If we don't hear from you in the next 48 hours, ` +
+      `we may need to release the reservation — ` +
+      `but we'd genuinely love to help you get on the road.\n\n` +
+      `Your satisfaction matters to us, and we're here to make it work.\n\n` +
+      `Warm regards,\nThe Hertz ${b} Team`,
   },
 } as const;
 
@@ -120,17 +135,21 @@ function buildHertzEmailHtml(customer: string, branch: string, reservationId: st
               <img src="${HERTZ_LOGO_DATA_URI}" alt="Hertz" width="180" height="63" style="display:block; margin:0 auto; border:0; outline:none; text-decoration:none;" />
             </td>
           </tr>
+          <!-- Gold accent bar -->
+          <tr>
+            <td style="background-color: #FFD100; height: 4px; font-size: 0; line-height: 0;">&nbsp;</td>
+          </tr>
           <!-- Body content -->
           <tr>
-            <td style="padding: 32px; font-size: 16px; line-height: 1.6; color: #272425;">
+            <td style="padding: 32px; font-size: 16px; line-height: 1.7; color: #272425;">
               ${bodyHtml}
             </td>
           </tr>
           <!-- Footer -->
           <tr>
-            <td style="background-color: #F8F8F8; padding: 20px 32px; font-size: 13px; color: #666666; border-top: 1px solid #E5E5E5;">
-              <p style="margin: 0 0 8px 0;">Thank you for choosing Hertz.</p>
-              <p style="margin: 0;">© Hertz. All rights reserved.</p>
+            <td style="background-color: #F8F8F8; padding: 24px 32px; font-size: 13px; color: #666666; border-top: 1px solid #E5E5E5;">
+              <p style="margin: 0 0 8px 0;">We truly value your trust in Hertz.</p>
+              <p style="margin: 0; font-size: 12px; color: #999999;">&copy; Hertz. All rights reserved.</p>
             </td>
           </tr>
         </table>

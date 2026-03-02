@@ -22,6 +22,20 @@ function cleanRow(raw) {
   return out;
 }
 
+/** Case-insensitive column lookup — handles "BODY SHOP", "Body Shop", "body_shop", etc. */
+function col(row, ...names) {
+  for (const name of names) {
+    if (row[name] !== undefined) return row[name];
+  }
+  const keys = Object.keys(row);
+  for (const name of names) {
+    const lower = name.toLowerCase().replace(/[_\s]+/g, "");
+    const match = keys.find((k) => k.toLowerCase().replace(/[_\s]+/g, "") === lower);
+    if (match !== undefined) return row[match];
+  }
+  return "";
+}
+
 // ---------------------------------------------------------------------------
 // Status derivation from HLES indicator columns
 // ---------------------------------------------------------------------------
@@ -94,31 +108,31 @@ function validateHlesRow(row, rowIndex) {
 function hlesRowToLead(row) {
   const status = deriveStatus(row);
   return {
-    confirmNum: row.CONFIRM_NUM,
-    knum: row.KNUM || row.CONFIRM_NUM,
-    customer: row.RENTER_LAST || "Unknown",
-    reservationId: row.CONFIRM_NUM,
+    confirmNum: col(row, "CONFIRM_NUM"),
+    knum: col(row, "KNUM") || col(row, "CONFIRM_NUM"),
+    customer: col(row, "RENTER_LAST") || "Unknown",
+    reservationId: col(row, "CONFIRM_NUM"),
     status,
     sourceStatus: status,
-    branch: parseBranchName(row.RENT_LOC),
-    rentLoc: row.RENT_LOC,
-    insuranceCompany: row["CDP NAME"] || row.CDP || "",
-    cdpName: row["CDP NAME"] || "",
-    weekOf: row["Week Of"] || "",
-    initDtFinal: row.INIT_DT_FINAL || "",
-    contactRange: row["CONTACT RANGE"] || row["New Contact Group"] || "",
+    branch: parseBranchName(col(row, "RENT_LOC")),
+    rentLoc: col(row, "RENT_LOC"),
+    insuranceCompany: col(row, "CDP NAME", "CDP") || "",
+    cdpName: col(row, "CDP NAME") || "",
+    weekOf: col(row, "Week Of", "WEEK_OF") || "",
+    initDtFinal: col(row, "INIT_DT_FINAL") || "",
+    contactRange: col(row, "CONTACT RANGE", "New Contact Group", "CONTACT_RANGE") || "",
     firstContactBy: deriveFirstContactBy(row),
     timeToFirstContact: deriveTimeToContact(row),
-    hlesReason: (row["CANCEL REASON"] || "").trim() || null,
-    bodyShop: row["BODY SHOP"] || "",
-    htzRegion: row.HTZREGION || "",
-    setState: row.SET_STATE || "",
-    zone: row.ZONE || "",
-    areaMgr: row.AREA_MGR || "",
-    generalMgr: row.GENERAL_MGR || "",
-    adjusterLastName: row["ADJ LNAME"] || "",
-    adjusterFirstName: row["ADJ FNAME"] || "",
-    mmr: row.MMR || "",
+    hlesReason: (col(row, "CANCEL REASON", "CANCEL_REASON") || "").trim() || null,
+    bodyShop: col(row, "BODY SHOP", "BODY_SHOP", "BODYSHOP") || "",
+    htzRegion: col(row, "HTZREGION", "HTZ_REGION") || "",
+    setState: col(row, "SET_STATE") || "",
+    zone: col(row, "ZONE") || "",
+    areaMgr: col(row, "AREA_MGR") || "",
+    generalMgr: col(row, "GENERAL_MGR") || "",
+    adjusterLastName: col(row, "ADJ LNAME", "ADJ_LNAME") || "",
+    adjusterFirstName: col(row, "ADJ FNAME", "ADJ_FNAME") || "",
+    mmr: col(row, "MMR") || "",
   };
 }
 

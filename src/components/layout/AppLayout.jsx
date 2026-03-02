@@ -1,10 +1,11 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import DemoTopBar from "./DemoTopBar";
 import Sidebar from "./Sidebar";
 import OnboardingTour from "../OnboardingTour";
 import DataBanner from "./DataBanner";
 import { useAuth } from "../../context/AuthContext";
 import { useApp } from "../../context/AppContext";
+import { BM_ONBOARDING_STEPS, GM_ONBOARDING_STEPS } from "../../config/onboardingSteps";
 
 export default function AppLayout({ children }) {
   const { userProfile, completeOnboarding } = useAuth();
@@ -13,6 +14,11 @@ export default function AppLayout({ children }) {
   const [onboardingReplay, setOnboardingReplay] = useState(false);
   const hasCheckedFirstLogin = useRef(false);
   const mainRef = useRef(null);
+
+  const onboardingSteps = useMemo(
+    () => (role === "gm" ? GM_ONBOARDING_STEPS : BM_ONBOARDING_STEPS),
+    [role]
+  );
 
   // Scroll to top on page load/refresh (prevents browser scroll restoration)
   useEffect(() => {
@@ -29,9 +35,9 @@ export default function AppLayout({ children }) {
     return () => clearTimeout(t);
   }, []);
 
-  // Conditional launch: BM first login when onboarding_completed_at is null
+  // Conditional launch: BM/GM first login when onboarding_completed_at is null
   useEffect(() => {
-    if (role !== "bm" || !userProfile || hasCheckedFirstLogin.current) return;
+    if ((role !== "bm" && role !== "gm") || !userProfile || hasCheckedFirstLogin.current) return;
     hasCheckedFirstLogin.current = true;
     if (userProfile.onboardingCompletedAt == null) {
       setOnboardingReplay(false);
@@ -55,7 +61,7 @@ export default function AppLayout({ children }) {
 
   return (
     <div className="h-full flex flex-col">
-      <DemoTopBar onHelpClick={role === "bm" ? handleHelpClick : undefined} />
+      <DemoTopBar onHelpClick={role === "bm" || role === "gm" ? handleHelpClick : undefined} />
       <DataBanner />
       <div className="flex-1 flex overflow-hidden">
         <Sidebar />
@@ -69,6 +75,7 @@ export default function AppLayout({ children }) {
         onComplete={handleOnboardingComplete}
         onSkip={handleOnboardingSkip}
         isReplay={onboardingReplay}
+        steps={onboardingSteps}
       />
     </div>
   );

@@ -6,12 +6,12 @@
   "color": {
     "primary": {
       "primary": {
-        "$value": "#FFD100",
-        "$description": "Hertz signature gold. THE defining brand color. Use as accent, not background flood."
+        "$value": "#F4C300",
+        "$description": "Hertz signature gold (PANTONE 7406 C, from 2024 Sustainability Report). Use as accent, not background flood."
       },
       "black": {
-        "$value": "#272425",
-        "$description": "Hertz 'shiny black'. Warmer than pure #000. Primary text, headers, nav backgrounds."
+        "$value": "#141618",
+        "$description": "Hertz rich black (from 2024 Sustainability Report). Primary text, headers, nav backgrounds."
       },
       "white": {
         "$value": "#FFFFFF",
@@ -47,8 +47,8 @@
     "semantic": {
       "success": { "$value": "#2E7D32", "$description": "Confirmation, availability" },
       "error": { "$value": "#C62828", "$description": "Validation errors, alerts" },
-      "warning": { "$value": "#F57F17", "$description": "Caution states — keep distinct from brand gold" },
-      "info": { "$value": "#1565C0", "$description": "Informational callouts, links" }
+      "warning": { "$value": "#FEA529", "$description": "Caution states — warm gold from report" },
+      "info": { "$value": "#4EDAFF", "$description": "Informational callouts, links (from 2024 report blue)" }
     }
   },
 

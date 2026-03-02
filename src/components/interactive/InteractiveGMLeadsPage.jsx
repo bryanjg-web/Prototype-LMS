@@ -10,20 +10,20 @@ import {
   getLeadById,
   getNextComplianceMeetingDate,
 } from "../../selectors/demoSelectors";
-import { orgMapping } from "../../data/mockData";
 import StatusBadge from "../StatusBadge";
 import ThreeColumnReview from "../ThreeColumnReview";
 
 const STATUS_TABS = ["All", "Cancelled", "Unused"];
 
 export default function InteractiveGMLeadsPage() {
-  const { leads } = useData();
+  const { leads, loading, orgMapping, updateLeadDirective, markLeadReviewed } = useData();
   const { navigateTo } = useApp();
-  const presets = useMemo(() => getDateRangePresets(), []);
+  const presets = useMemo(() => getDateRangePresets(), [loading]);
 
   const [selectedPresetKey, setSelectedPresetKey] = useState("this_week");
   const [statusFilter, setStatusFilter] = useState("All");
   const [bmFilter, setBmFilter] = useState("All");
+  const [amFilter, setAmFilter] = useState("All");
   const [branchFilter, setBranchFilter] = useState("All");
   const [insuranceFilter, setInsuranceFilter] = useState("All");
   const [searchQuery, setSearchQuery] = useState("");
@@ -35,14 +35,27 @@ export default function InteractiveGMLeadsPage() {
   const currentPreset = presets.find((p) => p.key === selectedPresetKey);
   const dateRange = currentPreset ? { start: currentPreset.start, end: currentPreset.end } : null;
 
-  const bmNames = useMemo(() => [...new Set(orgMapping.map((r) => r.bm))].sort(), []);
-  const branches = useMemo(() => [...new Set(orgMapping.map((r) => r.branch))].sort(), []);
+  const bmNames = useMemo(() => [...new Set(orgMapping.map((r) => r.bm))].sort(), [orgMapping]);
+  const branches = useMemo(() => [...new Set(orgMapping.map((r) => r.branch))].sort(), [orgMapping]);
+  const amNames = useMemo(() => [...new Set(orgMapping.map((r) => r.am).filter(Boolean))].sort(), [orgMapping]);
   const insuranceCompanies = useMemo(() => getInsuranceCompanies(leads), [leads]);
 
-  const filteredLeads = useMemo(
-    () => getGMLeads(leads, dateRange, { statusFilter: statusFilter === "All" ? null : statusFilter, bmFilter: bmFilter === "All" ? null : bmFilter, branchFilter: branchFilter === "All" ? null : branchFilter, insuranceFilter: insuranceFilter === "All" ? null : insuranceFilter, searchQuery: searchQuery || null }),
-    [leads, dateRange, statusFilter, bmFilter, branchFilter, insuranceFilter, searchQuery]
-  );
+  const amBranches = useMemo(() => {
+    if (amFilter === "All") return null;
+    return orgMapping.filter((r) => r.am === amFilter).map((r) => r.branch);
+  }, [orgMapping, amFilter]);
+
+  const filteredLeads = useMemo(() => {
+    let result = getGMLeads(leads, dateRange, {
+      statusFilter: statusFilter === "All" ? null : statusFilter,
+      bmFilter: bmFilter === "All" ? null : bmFilter,
+      branchFilter: branchFilter === "All" ? null : branchFilter,
+      insuranceFilter: insuranceFilter === "All" ? null : insuranceFilter,
+      searchQuery: searchQuery || null,
+    });
+    if (amBranches) result = result.filter((l) => amBranches.includes(l.branch));
+    return result;
+  }, [leads, dateRange, statusFilter, bmFilter, branchFilter, insuranceFilter, searchQuery, amBranches]);
 
   const { dateStr: meetingDateStr, daysLeft: meetingDaysLeft } = useMemo(() => getNextComplianceMeetingDate(), []);
   const selectedLead = selectedLeadId ? getLeadById(leads, selectedLeadId) : null;
@@ -59,10 +72,31 @@ export default function InteractiveGMLeadsPage() {
     setDirectiveSaved(false);
   };
 
-  const handleSaveDirective = () => {
-    if (!directive.trim()) return;
-    setDirectiveSaved(true);
-    setTimeout(() => setDirectiveSaved(false), 2000);
+  const [directiveSaving, setDirectiveSaving] = useState(false);
+
+  const handleSaveDirective = async () => {
+    if (!directive.trim() || !selectedLeadId) return;
+    setDirectiveSaving(true);
+    try {
+      await updateLeadDirective(selectedLeadId, directive.trim());
+      setDirective("");
+      setDirectiveSaved(true);
+      setTimeout(() => setDirectiveSaved(false), 3000);
+    } catch (err) {
+      console.error("Failed to save directive:", err);
+    } finally {
+      setDirectiveSaving(false);
+    }
+  };
+
+  const handleMarkReviewed = async () => {
+    if (!selectedLeadId) return;
+    try {
+      await markLeadReviewed(selectedLeadId);
+      setSelectedLeadId(null);
+    } catch (err) {
+      console.error("Failed to mark lead reviewed:", err);
+    }
   };
 
   return (
@@ -122,6 +156,11 @@ export default function InteractiveGMLeadsPage() {
               ))}
             </div>
 
+            <select value={amFilter} onChange={(e) => setAmFilter(e.target.value)} className="px-3 py-1.5 border border-[var(--neutral-200)] rounded-md text-xs bg-white focus:outline-none focus:ring-2 focus:ring-[var(--hertz-primary)]">
+              <option value="All">All AMs</option>
+              {amNames.map((n) => <option key={n} value={n}>{n}</option>)}
+            </select>
+
             <select value={bmFilter} onChange={(e) => setBmFilter(e.target.value)} className="px-3 py-1.5 border border-[var(--neutral-200)] rounded-md text-xs bg-white focus:outline-none focus:ring-2 focus:ring-[var(--hertz-primary)]">
               <option value="All">All BMs</option>
               {bmNames.map((n) => <option key={n} value={n}>{n}</option>)}
@@ -178,7 +217,14 @@ export default function InteractiveGMLeadsPage() {
                     }`}
                   >
                     <td className="px-4 py-3 font-medium text-[var(--hertz-black)]">
-                      <div>{lead.customer}</div>
+                      <div className="flex items-center gap-1.5">
+                        {lead.customer}
+                        {lead.gmDirective && (
+                          <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-[var(--hertz-primary-subtle)] text-[var(--hertz-black)]" title={lead.gmDirective}>
+                            Directive
+                          </span>
+                        )}
+                      </div>
                       <div className="text-xs text-[var(--neutral-500)] font-mono">{lead.reservationId}</div>
                     </td>
                     <td className="px-4 py-3"><StatusBadge status={lead.status} /></td>
@@ -236,13 +282,20 @@ export default function InteractiveGMLeadsPage() {
               <div className="flex items-center gap-3 mt-3">
                 <button
                   onClick={handleSaveDirective}
-                  disabled={!directive.trim()}
+                  disabled={!directive.trim() || directiveSaving}
                   className="px-4 py-2 bg-[var(--hertz-primary)] text-[var(--hertz-black)] rounded-lg text-sm font-medium hover:bg-[var(--hertz-primary-hover)] transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  Send Directive
+                  {directiveSaving ? "Saving..." : "Send Directive"}
+                </button>
+                <button
+                  onClick={handleMarkReviewed}
+                  className="px-4 py-2 border border-[var(--neutral-300)] text-[var(--hertz-black)] rounded-lg text-sm font-medium hover:bg-[var(--neutral-100)] transition-colors cursor-pointer flex items-center gap-1.5"
+                >
+                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
+                  Mark Reviewed
                 </button>
                 {directiveSaved && (
-                  <motion.span initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="text-sm text-green-600 font-medium">
+                  <motion.span initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="text-sm text-[var(--color-success)] font-medium">
                     Directive saved
                   </motion.span>
                 )}

@@ -4,7 +4,7 @@ import StatusBadge from "./StatusBadge";
 import TranslogTimeline from "./TranslogTimeline";
 import { getHierarchyForBranch, getMismatchReason } from "../selectors/demoSelectors";
 
-export default function LeadDetail({ lead, enrichmentSlot, contactSlot, contactButtonsSlot, tasksSlot, contactActivities = [] }) {
+export default function LeadDetail({ lead, enrichmentSlot, contactSlot, contactButtonsSlot, tasksSlot, upcomingCommsSlot, contactActivities = [] }) {
   const hierarchy = getHierarchyForBranch(lead.branch);
   const mismatchReason = getMismatchReason(lead);
   const [translogExpanded, setTranslogExpanded] = useState(false);
@@ -180,6 +180,11 @@ export default function LeadDetail({ lead, enrichmentSlot, contactSlot, contactB
 
       {/* Right column — visual clusters for Contact, Tasks, Comments */}
       <div className="border-l border-[var(--neutral-200)] pl-8 space-y-6">
+        {upcomingCommsSlot && (
+          <div className="rounded-lg border border-[var(--neutral-200)] bg-[var(--hertz-white)] p-5 border-l-[3px] border-l-[var(--hertz-primary)]">
+            {upcomingCommsSlot}
+          </div>
+        )}
         {contactButtonsSlot && (
           <div className="rounded-lg border border-[var(--neutral-200)] bg-[var(--hertz-white)] p-5">
             <h3 className="text-xs font-bold text-[#6E6E6E] uppercase tracking-wider mb-3">Contact Customer</h3>

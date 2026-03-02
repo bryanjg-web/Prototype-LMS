@@ -9,19 +9,19 @@ export default function MiniBarChart({ data, labels, color, label, suffix = "" }
   const deltaFlat = delta === 0;
 
   return (
-    <div className="border border-[#E6E6E6] rounded-lg p-4">
-      <p className="text-xs font-bold text-[#6E6E6E] uppercase tracking-wide mb-1">{label}</p>
+    <div className="border border-[var(--neutral-200)] rounded-lg p-4">
+      <p className="text-xs font-bold text-[var(--chart-neutral-dark)] uppercase tracking-wide mb-1">{label}</p>
       <div className="flex items-baseline gap-2 mb-3">
         <span className="text-2xl font-bold text-[var(--hertz-black)]">
           {current}{suffix}
         </span>
         {!deltaFlat && (
-          <span className={`text-xs font-medium ${deltaUp ? "text-[#2E7D32]" : "text-[#C62828]"}`}>
+          <span className={`text-xs font-medium ${deltaUp ? "text-[var(--color-success)]" : "text-[var(--color-error)]"}`}>
             {deltaUp ? "↑" : "↓"}{Math.abs(delta)}%
           </span>
         )}
         {deltaFlat && (
-          <span className="text-xs font-medium text-[#6E6E6E]">—</span>
+          <span className="text-xs font-medium text-[var(--chart-neutral-dark)]">—</span>
         )}
       </div>
       <div className="flex items-end gap-1.5" style={{ height: 48 }}>
@@ -38,7 +38,7 @@ export default function MiniBarChart({ data, labels, color, label, suffix = "" }
       </div>
       <div className="flex gap-1.5 mt-1">
         {labels.map((l, i) => (
-          <span key={i} className="flex-1 text-center text-[10px] text-[#6E6E6E]">{l}</span>
+          <span key={i} className="flex-1 text-center text-xs text-[var(--chart-neutral-dark)]">{l}</span>
         ))}
       </div>
     </div>

@@ -3,11 +3,13 @@ import { useApp } from "../../context/AppContext";
 import BackButton from "../BackButton";
 import { useAuth } from "../../context/AuthContext";
 import { useData } from "../../context/DataContext";
-import { getLeadById, getTasksForLead } from "../../selectors/demoSelectors";
+import { getLeadById, getTasksForLead, getUpcomingCommunications } from "../../selectors/demoSelectors";
 import LeadDetail from "../LeadDetail";
 import LeadContactCard from "../LeadContactCard";
 import ContactButtons from "../ContactButtons";
+import UpcomingCommunications from "../UpcomingCommunications";
 import InteractiveEnrichmentForm from "./InteractiveEnrichmentForm";
+import GMDirectiveSection from "../GMDirectiveSection";
 
 export default function InteractiveLeadDetail() {
   const { selectedLeadId, navigateTo, selectTask, activeView, role } = useApp();
@@ -78,7 +80,17 @@ export default function InteractiveLeadDetail() {
             onContactSuccess={loadActivities}
           />
         }
-        enrichmentSlot={<InteractiveEnrichmentForm lead={lead} />}
+        upcomingCommsSlot={
+          (() => {
+            const upcomingItems = getUpcomingCommunications(lead, contactActivities);
+            return upcomingItems.length > 0 ? <UpcomingCommunications items={upcomingItems} /> : null;
+          })()
+        }
+        enrichmentSlot={
+          isGMContext
+            ? <GMDirectiveSection lead={lead} />
+            : <InteractiveEnrichmentForm lead={lead} />
+        }
         tasksSlot={
           <div data-onboarding="tasks-section">
             <h3 className="text-xs font-bold text-[var(--neutral-600)] uppercase tracking-wider mb-3">Tasks</h3>

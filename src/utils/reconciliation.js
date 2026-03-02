@@ -20,6 +20,11 @@
  *     status (if lead has enrichment AND status changed)
  */
 
+function normalizeKey(val) {
+  if (!val) return "";
+  return String(val).trim().toUpperCase();
+}
+
 /**
  * @typedef {Object} ReconciliationResult
  * @property {object[]} newLeads        - Leads not in DB (will be inserted)
@@ -41,8 +46,8 @@ export function reconcileHlesUpload(parsedLeads, existingLeads) {
   const existingByConfirmNum = new Map();
   const existingByReservationId = new Map();
   for (const lead of existingLeads) {
-    if (lead.confirmNum) existingByConfirmNum.set(lead.confirmNum, lead);
-    if (lead.reservationId) existingByReservationId.set(lead.reservationId, lead);
+    if (lead.confirmNum) existingByConfirmNum.set(normalizeKey(lead.confirmNum), lead);
+    if (lead.reservationId) existingByReservationId.set(normalizeKey(lead.reservationId), lead);
   }
 
   const newLeads = [];
@@ -53,8 +58,8 @@ export function reconcileHlesUpload(parsedLeads, existingLeads) {
 
   for (const parsed of parsedLeads) {
     const existing =
-      existingByConfirmNum.get(parsed.confirmNum) ||
-      existingByReservationId.get(parsed.reservationId);
+      existingByConfirmNum.get(normalizeKey(parsed.confirmNum)) ||
+      existingByReservationId.get(normalizeKey(parsed.reservationId));
 
     if (!existing) {
       newLeads.push({ parsed, action: "insert" });
@@ -87,9 +92,9 @@ export function reconcileHlesUpload(parsedLeads, existingLeads) {
   }
 
   // Orphaned leads: in DB but not in the new HLES upload
-  const parsedConfirmNums = new Set(parsedLeads.map((l) => l.confirmNum));
+  const parsedConfirmNums = new Set(parsedLeads.map((l) => normalizeKey(l.confirmNum)));
   const orphanedLeads = existingLeads.filter((lead) => {
-    const key = lead.confirmNum || lead.reservationId;
+    const key = normalizeKey(lead.confirmNum || lead.reservationId);
     return key && !parsedConfirmNums.has(key) && !matchedIds.has(lead.id ?? lead.reservationId);
   });
 
@@ -210,16 +215,17 @@ export function reconcileTranslogUpload(eventsByLead, existingLeads) {
   const leadsByConfirmNum = new Map();
   const leadsByKnum = new Map();
   for (const lead of existingLeads) {
-    if (lead.confirmNum) leadsByConfirmNum.set(lead.confirmNum, lead);
-    if (lead.knum) leadsByKnum.set(lead.knum, lead);
-    if (lead.reservationId) leadsByConfirmNum.set(lead.reservationId, lead);
+    if (lead.confirmNum) leadsByConfirmNum.set(normalizeKey(lead.confirmNum), lead);
+    if (lead.knum) leadsByKnum.set(normalizeKey(lead.knum), lead);
+    if (lead.reservationId) leadsByConfirmNum.set(normalizeKey(lead.reservationId), lead);
   }
 
   const matched = [];
   const orphanEvents = [];
 
   for (const [key, events] of eventsByLead.entries()) {
-    const lead = leadsByConfirmNum.get(key) || leadsByKnum.get(key);
+    const nk = normalizeKey(key);
+    const lead = leadsByConfirmNum.get(nk) || leadsByKnum.get(nk);
     if (lead) {
       matched.push({ lead, events, newEventCount: events.length });
     } else {
@@ -290,8 +296,14 @@ export function buildCommitPlan(reconciliation, conflictResolutions = {}, orphan
   const skips = resolvedConflicts.filter((c) => c.resolution === "skip");
 
   let archives = [];
+  let deletes = [];
   if (orphanAction === "archive") {
     archives = reconciliation.orphanedLeads.map((lead) => ({
+      id: lead.id,
+      reservationId: lead.reservationId,
+    }));
+  } else if (orphanAction === "delete") {
+    deletes = reconciliation.orphanedLeads.map((lead) => ({
       id: lead.id,
       reservationId: lead.reservationId,
     }));
@@ -301,6 +313,7 @@ export function buildCommitPlan(reconciliation, conflictResolutions = {}, orphan
     inserts,
     updates: [...updates, ...conflictUpdates],
     archives,
+    deletes,
     skips,
   };
 }

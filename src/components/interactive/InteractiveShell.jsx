@@ -14,6 +14,8 @@ import InteractiveLeaderboardPage from "./InteractiveLeaderboardPage";
 import InteractiveGMLeadsPage from "./InteractiveGMLeadsPage";
 import InteractiveGMLeaderboardPage from "./InteractiveGMLeaderboardPage";
 import InteractiveGMMeetingPrepPage from "./InteractiveGMMeetingPrepPage";
+import InteractiveGMSpotCheckPage from "./InteractiveGMSpotCheckPage";
+import InteractiveGMActivityReportPage from "./InteractiveGMActivityReportPage";
 
 const viewComponents = {
   "bm-home": InteractiveDashboard,
@@ -32,7 +34,9 @@ const viewComponents = {
   "gm-task-detail": InteractiveTaskDetail,
   "gm-lead-detail": InteractiveLeadDetail,
   "gm-lead-review": InteractiveGMLeadsPage,
+  "gm-spot-check": InteractiveGMSpotCheckPage,
   "gm-leaderboard": InteractiveGMLeaderboardPage,
+  "gm-activity-report": InteractiveGMActivityReportPage,
   "admin-dashboard": InteractiveDashboard,
   "admin-uploads": InteractiveUploads,
   "admin-org-mapping": InteractiveOrgMapping,

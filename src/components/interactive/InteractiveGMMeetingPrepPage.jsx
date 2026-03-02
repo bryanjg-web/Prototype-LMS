@@ -18,18 +18,20 @@ import {
   getUnreachableLeadsStats,
   getWinsLearningsForGM,
   relChange,
+  resolveGMName,
 } from "../../selectors/demoSelectors";
 import StatusBadge from "../StatusBadge";
-import MetricDrilldownModal from "../MetricDrilldownModal";
+import GMMetricDrilldownModal from "../GMMetricDrilldownModal";
+import { formatDateShort } from "../../utils/dateTime";
 import ThreeColumnReview from "../ThreeColumnReview";
 import BranchComplianceDetailPane from "./BranchComplianceDetailPane";
 import GMPresentationMode from "./GMPresentationMode";
 
 const easeOut = [0.4, 0, 0.2, 1];
 
-/** Color code modules by progress %: 0-50% red, 50-99% yellow, 100% green */
+/** Color code modules by progress %: 0-50% red, 50-99% yellow, 100% neutral (done = no attention needed) */
 function getProgressModuleColors(progressPct) {
-  if (progressPct >= 100) return { bg: "bg-emerald-50", border: "border-emerald-200", bar: "var(--color-success)" };
+  if (progressPct >= 100) return { bg: "bg-[var(--neutral-50)]", border: "border-[var(--neutral-200)]", bar: "var(--neutral-400)" };
   if (progressPct >= 50) return { bg: "bg-amber-50", border: "border-amber-200", bar: "var(--hertz-primary)" };
   return { bg: "bg-red-50", border: "border-red-200", bar: "#C62828" };
 }
@@ -92,15 +94,15 @@ function formatDueDate(dueStr) {
   if (diffDays < 0) return `${Math.abs(diffDays)}d overdue`;
   if (diffDays === 0) return "Today";
   if (diffDays === 1) return "Tomorrow";
-  return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+  return formatDateShort(d);
 }
 
 export default function InteractiveGMMeetingPrepPage() {
-  const { leads, createComplianceTasksForBranch, winsLearnings, useSupabase } = useData();
+  const { leads, loading, orgMapping, createComplianceTasksForBranch, winsLearnings, useSupabase, updateLeadDirective, markLeadReviewed, gmTasks } = useData();
   const { navigateTo, selectTask, selectLead } = useApp();
   const { userProfile } = useAuth();
   const reduceMotion = useReducedMotion();
-  const presets = useMemo(() => getDateRangePresets(), []);
+  const presets = useMemo(() => getDateRangePresets(), [loading]);
 
   const [selectedPresetKey, setSelectedPresetKey] = useState("this_week");
   const [branchComplianceExpanded, setBranchComplianceExpanded] = useState(false);
@@ -120,27 +122,32 @@ export default function InteractiveGMMeetingPrepPage() {
   const dateRange = currentPreset ? { start: currentPreset.start, end: currentPreset.end } : null;
   const comparisonRange = useMemo(() => getComparisonDateRange(selectedPresetKey), [selectedPresetKey]);
 
-  const stats = useMemo(() => getGMDashboardStats(leads, dateRange), [leads, dateRange]);
-  const prevStats = useMemo(() => (comparisonRange ? getGMDashboardStats(leads, comparisonRange) : null), [leads, comparisonRange]);
-  const prevUnreachable = useMemo(() => (comparisonRange ? getUnreachableLeadsStats(leads, comparisonRange) : null), [leads, comparisonRange]);
-  const unreachableStats = useMemo(() => getUnreachableLeadsStats(leads, dateRange), [leads, dateRange]);
-  const meetingPrepData = useMemo(() => getGMMeetingPrepData(leads, dateRange), [leads, dateRange]);
-  const openTasks = useMemo(() => getTasksForGMBranches(null, "D. Williams"), []);
-  const tasksProgress = useMemo(() => getGMTasksProgress(null, "D. Williams"), []);
-  const leadsToReview = useMemo(() => getGMLeads(leads, dateRange, {}), [leads, dateRange]);
+  const gmName = resolveGMName(userProfile?.displayName, userProfile?.id);
+  const gmFilteredLeads = useMemo(() => {
+    if (!gmName) return leads ?? [];
+    const myBranches = (orgMapping ?? []).filter((r) => r.gm === gmName).map((r) => r.branch);
+    return (leads ?? []).filter((l) => myBranches.includes(l.branch));
+  }, [leads, gmName, orgMapping]);
+  const stats = useMemo(() => getGMDashboardStats(leads, dateRange, gmName), [leads, dateRange, gmName]);
+  const prevStats = useMemo(() => (comparisonRange ? getGMDashboardStats(leads, comparisonRange, gmName) : null), [leads, comparisonRange, gmName]);
+  const prevUnreachable = useMemo(() => (comparisonRange ? getUnreachableLeadsStats(leads, comparisonRange, gmName) : null), [leads, comparisonRange, gmName]);
+  const unreachableStats = useMemo(() => getUnreachableLeadsStats(leads, dateRange, gmName), [leads, dateRange, gmName]);
+  const meetingPrepData = useMemo(() => getGMMeetingPrepData(leads, dateRange, gmName), [leads, dateRange, gmName]);
+  const openTasks = useMemo(() => getTasksForGMBranches(gmTasks, gmName), [gmTasks, gmName]);
+  const tasksProgress = useMemo(() => getGMTasksProgress(gmTasks, gmName), [gmTasks, gmName]);
+  const leadsToReview = useMemo(() => getGMLeads(leads, dateRange, {}, gmName), [leads, dateRange, gmName]);
   const leadsReviewed = useMemo(() => leadsToReview.filter((l) => l.gmDirective).length, [leadsToReview]);
   const leadsProgressPct = leadsToReview.length > 0 ? Math.round((leadsReviewed / leadsToReview.length) * 100) : 100;
   const { dateStr: meetingDateStr, daysLeft, date: meetingDate } = useMemo(() => getNextComplianceMeetingDate(), []);
   const meetingDueDateStr = meetingDate ? meetingDate.toISOString().slice(0, 10) : null;
 
   const selectedLead = selectedLeadId ? getLeadById(leads, selectedLeadId) : null;
-  const gmName = userProfile?.name ?? "D. Williams";
   const winsLearningsForGM = useMemo(() => getWinsLearningsForGM(winsLearnings ?? [], gmName), [winsLearnings, gmName]);
 
   // Freeze data snapshot when opening presentation so it can't change mid-meeting
   const handleOpenPresentation = useCallback(() => {
     setPresentationSnapshot({
-      frozenLeads: [...leads],
+      frozenLeads: [...gmFilteredLeads],
       frozenWinsLearnings: [...(winsLearnings ?? [])],
       dateRange,
       compRange: comparisonRange,
@@ -148,7 +155,7 @@ export default function InteractiveGMMeetingPrepPage() {
       gmName,
     });
     setShowPresentation(true);
-  }, [leads, winsLearnings, dateRange, comparisonRange, meetingDateStr, gmName]);
+  }, [gmFilteredLeads, winsLearnings, dateRange, comparisonRange, meetingDateStr, gmName]);
 
   useEffect(() => {
     if (selectedLead && panelRef.current) {
@@ -156,9 +163,35 @@ export default function InteractiveGMMeetingPrepPage() {
     }
   }, [selectedLeadId]);
 
-  const handleSaveDirective = () => {
-    setDirectiveSaved(true);
-    setTimeout(() => setDirectiveSaved(false), 2000);
+  const [directiveSaving, setDirectiveSaving] = useState(false);
+  const [reviewedLeadId, setReviewedLeadId] = useState(null);
+
+  const handleSaveDirective = async () => {
+    if (!directive.trim() || !selectedLeadId) return;
+    setDirectiveSaving(true);
+    try {
+      await updateLeadDirective(selectedLeadId, directive.trim());
+      setDirective("");
+      setDirectiveSaved(true);
+      setTimeout(() => setDirectiveSaved(false), 3000);
+    } catch (err) {
+      console.error("Failed to save directive:", err);
+    } finally {
+      setDirectiveSaving(false);
+    }
+  };
+
+  const handleMarkReviewed = async (leadId) => {
+    const targetId = leadId ?? selectedLeadId;
+    if (!targetId) return;
+    try {
+      await markLeadReviewed(targetId);
+      setReviewedLeadId(targetId);
+      if (targetId === selectedLeadId) setSelectedLeadId(null);
+      setTimeout(() => setReviewedLeadId(null), 3000);
+    } catch (err) {
+      console.error("Failed to mark lead reviewed:", err);
+    }
   };
 
   const handleViewTask = (taskId) => {
@@ -184,17 +217,37 @@ export default function InteractiveGMMeetingPrepPage() {
       </AnimatePresence>
 
       <AnimatePresence>
-        {drilldownMetric && (
-          <MetricDrilldownModal
-            metricKey={drilldownMetric}
-            onClose={() => setDrilldownMetric(null)}
-            leads={leads}
-            branchTasks={[]}
-            dateRange={dateRange}
-            comparisonRange={comparisonRange}
-            branch={null}
-          />
-        )}
+        {drilldownMetric && (() => {
+          const metricValueMap = {
+            conversion_rate: stats.conversionRate,
+            contacted_within_30_min: stats.pctWithin30,
+            comment_rate: stats.commentCompliance,
+            branch_vs_hrd_split: stats.branchPct,
+            cancelled_unreviewed: stats.cancelledUnreviewed,
+            unused_overdue: stats.unusedOverdue,
+          };
+          const prevMetricValueMap = {
+            conversion_rate: prevStats?.conversionRate,
+            contacted_within_30_min: prevStats?.pctWithin30,
+            comment_rate: prevStats?.commentCompliance,
+            branch_vs_hrd_split: prevStats?.branchPct,
+            cancelled_unreviewed: prevStats?.cancelledUnreviewed,
+            unused_overdue: prevStats?.unusedOverdue,
+          };
+          return (
+            <GMMetricDrilldownModal
+              metricKey={drilldownMetric}
+              onClose={() => setDrilldownMetric(null)}
+              leads={gmFilteredLeads}
+              dateRange={dateRange}
+              comparisonRange={comparisonRange}
+              currentValue={metricValueMap[drilldownMetric]}
+              previousValue={prevMetricValueMap[drilldownMetric]}
+              selectedPresetKey={selectedPresetKey}
+              gmName={gmName}
+            />
+          );
+        })()}
       </AnimatePresence>
       {/* Header — GM chase-up framing */}
       <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="mb-6">
@@ -404,6 +457,11 @@ export default function InteractiveGMMeetingPrepPage() {
 
                               <div className="mt-4 pt-4 border-t border-[var(--neutral-200)]">
                                 <label className="text-xs font-bold text-[var(--hertz-black)] uppercase tracking-wider">GM Directive</label>
+                                {selectedLead.gmDirective && (
+                                  <div className="mt-2 mb-2 px-3 py-2 bg-[var(--neutral-50)] rounded-lg text-sm text-[var(--neutral-600)]">
+                                    <span className="font-medium text-[var(--hertz-black)]">Previous:</span> {selectedLead.gmDirective}
+                                  </div>
+                                )}
                                 <textarea
                                   value={directive}
                                   onChange={(e) => setDirective(e.target.value)}
@@ -414,13 +472,20 @@ export default function InteractiveGMMeetingPrepPage() {
                                 <div className="flex items-center gap-2 mt-2">
                                   <button
                                     onClick={handleSaveDirective}
-                                    disabled={!directive.trim()}
+                                    disabled={!directive.trim() || directiveSaving}
                                     className="px-4 py-1.5 bg-[var(--hertz-primary)] text-[var(--hertz-black)] rounded-lg text-sm font-medium hover:bg-[var(--hertz-primary-hover)] transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                                   >
-                                    Send Directive
+                                    {directiveSaving ? "Saving..." : "Send Directive"}
+                                  </button>
+                                  <button
+                                    onClick={() => handleMarkReviewed()}
+                                    className="px-4 py-1.5 border border-[var(--neutral-300)] text-[var(--hertz-black)] rounded-lg text-sm font-medium hover:bg-[var(--neutral-100)] transition-colors cursor-pointer flex items-center gap-1.5"
+                                  >
+                                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
+                                    Mark Reviewed
                                   </button>
                                   {directiveSaved && (
-                                    <span className="text-xs text-[var(--color-success)] font-medium">Saved</span>
+                                    <span className="text-xs text-[var(--color-success)] font-medium">Directive saved</span>
                                   )}
                                 </div>
                               </div>
@@ -521,7 +586,7 @@ export default function InteractiveGMMeetingPrepPage() {
                         leads={leads}
                         dateRange={dateRange}
                         meetingDueDateStr={meetingDueDateStr}
-                        gmName={userProfile?.displayName ?? "D. Williams"}
+                        gmName={resolveGMName(userProfile?.displayName, userProfile?.id)}
                         gmUserId={userProfile?.id ?? null}
                         useSupabase={useSupabase}
                         createComplianceTasksForBranch={createComplianceTasksForBranch}
@@ -701,7 +766,7 @@ export default function InteractiveGMMeetingPrepPage() {
           // This is an alert state — even 1 lead here is a problem worth surfacing
           const alertColors = hasLeads
             ? { bg: "bg-red-50", border: "border-red-200" }
-            : { bg: "bg-emerald-50", border: "border-emerald-200" };
+            : { bg: "bg-[var(--neutral-50)]", border: "border-[var(--neutral-200)]" };
           return (
             <>
               <button
@@ -862,7 +927,7 @@ export default function InteractiveGMMeetingPrepPage() {
                   <div className="w-1.5 h-1.5 rounded-full bg-[var(--hertz-primary)] mt-2 shrink-0" />
                   <div className="min-w-0">
                     <p className="text-sm text-[var(--hertz-black)] leading-relaxed">{entry.content}</p>
-                    <p className="text-xs text-[var(--neutral-400)] mt-1">{entry.branch} · {entry.weekOf}</p>
+                    <p className="text-xs text-[var(--neutral-400)] mt-1">{entry.branch}</p>
                   </div>
                 </div>
               ))}

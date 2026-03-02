@@ -313,12 +313,20 @@ export default function OnboardingTour({
       rafRef.current = requestAnimationFrame(updateTargetRect);
     };
     window.addEventListener("scroll", onScroll, true);
-    const resizeObs = new ResizeObserver(updateTargetRect);
     const root = document.getElementById("dashboard-scroll-root");
-    if (root) resizeObs.observe(root);
+    if (root) {
+      root.addEventListener("scroll", onScroll, { passive: true });
+      const resizeObs = new ResizeObserver(updateTargetRect);
+      resizeObs.observe(root);
+      return () => {
+        window.removeEventListener("scroll", onScroll, true);
+        root.removeEventListener("scroll", onScroll);
+        resizeObs.disconnect();
+        if (rafRef.current) cancelAnimationFrame(rafRef.current);
+      };
+    }
     return () => {
       window.removeEventListener("scroll", onScroll, true);
-      resizeObs.disconnect();
       if (rafRef.current) cancelAnimationFrame(rafRef.current);
     };
   }, [open, step, updateTargetRect]);
@@ -328,6 +336,23 @@ export default function OnboardingTour({
     if (!open || !step || activeView === step.requiredView) return;
     navigateTo(step.requiredView);
   }, [open, step?.requiredView, activeView, navigateTo]);
+
+  // Auto-scroll target into view when step changes so spotlight isn't cut off
+  useEffect(() => {
+    if (!open || !step?.target) return;
+    const el = document.querySelector(step.target);
+    if (!el) return;
+    const scrollDelay = 150;
+    const rectRefreshDelay = reducedMotion ? 200 : 500; // after scroll settles
+    const t1 = setTimeout(() => {
+      el.scrollIntoView({ behavior: reducedMotion ? "auto" : "smooth", block: "center" });
+    }, scrollDelay);
+    const t2 = setTimeout(updateTargetRect, scrollDelay + rectRefreshDelay);
+    return () => {
+      clearTimeout(t1);
+      clearTimeout(t2);
+    };
+  }, [open, step?.target, reducedMotion, updateTargetRect]);
 
   const handleNext = useCallback(() => {
     if (stepIndex >= totalSteps - 1) {

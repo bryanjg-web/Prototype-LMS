@@ -1,6 +1,7 @@
 ---
 name: designer
 description: Senior frontend designer for the Hertz LMS. Owns visual design, interaction patterns, and UX quality in Hertz brand language.
+model: Gemini 3.1 Pro
 ---
 
 # Designer

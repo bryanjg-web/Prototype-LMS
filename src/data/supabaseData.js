@@ -3,6 +3,8 @@
  * Use this when VITE_USE_SUPABASE=true; otherwise mockData is used.
  */
 import { supabase } from "../lib/supabase";
+import codeMappings from "./codeMappings.json";
+import { formatDateTimeShort } from "../utils/dateTime";
 
 // Transform DB row to app shape (snake_case → camelCase)
 function leadFromRow(row) {
@@ -59,6 +61,8 @@ function orgMappingFromRow(row) {
     am: row.am,
     gm: row.gm,
     zone: row.zone,
+    gmUserId: row.gm_user_id ?? null,
+    bmUserId: row.bm_user_id ?? null,
   };
 }
 
@@ -132,7 +136,7 @@ export async function fetchUploadSummary() {
   return {
     hles: data.hles ?? {},
     translog: data.translog ?? {},
-    dataAsOfDate: data.data_as_of_date,
+    dataAsOfDate: data.created_at ?? data.data_as_of_date,
   };
 }
 
@@ -216,7 +220,7 @@ export async function updateLeadEnrichment(leadId, enrichment, enrichmentLogEntr
   return leadFromRow(data);
 }
 
-/** Update lead GM directive */
+/** Update lead GM directive (keeps leads.gm_directive as the latest for quick lookups) */
 export async function updateLeadDirective(leadId, gmDirective) {
   const { data, error } = await supabase
     .from("leads")
@@ -229,6 +233,56 @@ export async function updateLeadDirective(leadId, gmDirective) {
     .single();
   if (error) throw error;
   return leadFromRow(data);
+}
+
+function gmDirectiveFromRow(row) {
+  if (!row) return null;
+  return {
+    id: row.id,
+    leadId: row.lead_id,
+    directiveText: row.directive_text,
+    priority: row.priority ?? "normal",
+    dueDate: row.due_date ?? null,
+    createdBy: row.created_by ?? null,
+    createdByName: row.created_by_name ?? "Unknown",
+    createdAt: row.created_at,
+  };
+}
+
+/** Fetch all GM directives for a lead (newest first) */
+export async function fetchGmDirectives(leadId) {
+  const { data, error } = await supabase
+    .from("gm_directives")
+    .select("*")
+    .eq("lead_id", leadId)
+    .order("created_at", { ascending: false });
+  if (error) throw error;
+  return (data ?? []).map(gmDirectiveFromRow);
+}
+
+/** Insert a new GM directive and update leads.gm_directive with the latest text */
+export async function insertGmDirective({ leadId, directiveText, priority, dueDate, createdBy, createdByName }) {
+  const { data, error } = await supabase
+    .from("gm_directives")
+    .insert({
+      lead_id: leadId,
+      directive_text: directiveText,
+      priority: priority ?? "normal",
+      due_date: dueDate ?? null,
+      created_by: createdBy ?? null,
+      created_by_name: createdByName ?? null,
+    })
+    .select()
+    .single();
+  if (error) throw error;
+
+  const { error: leadErr } = await supabase
+    .from("leads")
+    .update({ gm_directive: directiveText, updated_at: new Date().toISOString() })
+    .eq("id", leadId);
+  if (leadErr) console.error("Failed to sync leads.gm_directive:", leadErr);
+
+  return gmDirectiveFromRow(data);
 }
 
 /** Update lead contact info (email, phone) — manual enrichment. Optionally append to enrichment_log. */
@@ -279,10 +333,7 @@ export async function fetchLeadActivities(leadId) {
 }
 
 function formatActivityTime(iso) {
-  if (!iso) return "";
-  const d = new Date(iso);
-  return d.toLocaleDateString("en-US", { month: "short", day: "numeric" }) +
-    ", " + d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
+  return formatDateTimeShort(iso) || "";
 }
 
 function getActivityAction(type) {
@@ -310,6 +361,7 @@ function taskFromRow(row) {
     priority: row.priority ?? "Medium",
     assignedTo: row.assigned_to,
     assignedToName: row.assigned_to_name ?? "—",
+    assignedBranch: lead?.branch ?? null,
     createdBy: row.created_by_name ?? "—",
     leadId: row.lead_id,
     lead: lead ? { id: lead.id, customer: lead.customer, reservationId: lead.reservation_id, branch: lead.branch } : null,
@@ -383,8 +435,7 @@ export async function updateTaskStatus(taskId, status) {
 /** Append a note to task notes_log (like enrichment_log / TRANSLOG activity). Each note has timestamp and author. */
 export async function appendTaskNote(taskId, noteText, author) {
   const now = new Date();
-  const timeStr = now.toLocaleDateString("en-US", { month: "short", day: "numeric" }) +
-    ", " + now.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
+  const timeStr = formatDateTimeShort(now);
   const entry = {
     time: timeStr,
     timestamp: now.getTime(),
@@ -408,6 +459,39 @@ export async function appendTaskNote(taskId, noteText, author) {
     .single();
   if (error) throw error;
   return taskFromRow(data);
+}
+
+/** Fetch all tasks for branches under a GM (for the GM dashboard/meeting prep). */
+export async function fetchTasksForGM(gmBranches) {
+  if (!gmBranches?.length) return [];
+  const { data, error } = await supabase
+    .from("tasks")
+    .select("*, leads(id, customer, reservation_id, branch)")
+    .order("due_date", { ascending: true, nullsFirst: false })
+    .order("created_at", { ascending: true });
+  if (error) {
+    console.error("fetchTasksForGM failed:", error);
+    return [];
+  }
+  return (data ?? [])
+    .filter((row) => gmBranches.includes(row.leads?.branch))
+    .map((row) => taskFromRow(row));
+}
+
+/** Mark a lead as reviewed (sets status=Reviewed, archived=true) */
+export async function markLeadReviewed(leadId) {
+  const { data, error } = await supabase
+    .from("leads")
+    .update({
+      status: "Reviewed",
+      archived: true,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", leadId)
+    .select()
+    .single();
+  if (error) throw error;
+  return leadFromRow(data);
 }
 
 /** Archive a lead */
@@ -715,52 +799,79 @@ export async function fetchUnresolvedConflicts(uploadId) {
  * Commit HLES upload: insert new leads, update existing, handle conflicts.
  * This is the main write operation for the admin upload flow.
  */
-export async function commitHlesUpload(uploadId, commitPlan) {
-  const results = { inserted: 0, updated: 0, archived: 0, errors: [] };
+function leadToInsertRow(lead, uploadId) {
+  return {
+    customer: lead.customer,
+    reservation_id: lead.reservationId,
+    confirm_num: lead.confirmNum,
+    knum: lead.knum,
+    status: lead.status,
+    source_status: lead.sourceStatus ?? lead.status,
+    branch: lead.branch,
+    bm_name: "—",
+    insurance_company: lead.insuranceCompany,
+    cdp_name: lead.cdpName,
+    time_to_first_contact: lead.timeToFirstContact,
+    first_contact_by: lead.firstContactBy,
+    hles_reason: lead.hlesReason,
+    body_shop: lead.bodyShop,
+    week_of: lead.weekOf,
+    init_dt_final: lead.initDtFinal,
+    contact_range: lead.contactRange,
+    htz_region: lead.htzRegion,
+    set_state: lead.setState,
+    zone: lead.zone,
+    area_mgr: lead.areaMgr,
+    general_mgr: lead.generalMgr,
+    rent_loc: lead.rentLoc,
+    last_upload_id: uploadId,
+  };
+}
 
-  // Insert new leads
-  for (const lead of commitPlan.inserts) {
-    try {
-      const { error } = await supabase.from("leads").insert({
-        customer: lead.customer,
-        reservation_id: lead.reservationId,
-        confirm_num: lead.confirmNum,
-        knum: lead.knum,
-        status: lead.status,
-        source_status: lead.sourceStatus ?? lead.status,
-        branch: lead.branch,
-        bm_name: "—",
-        insurance_company: lead.insuranceCompany,
-        cdp_name: lead.cdpName,
-        time_to_first_contact: lead.timeToFirstContact,
-        first_contact_by: lead.firstContactBy,
-        hles_reason: lead.hlesReason,
-        body_shop: lead.bodyShop,
-        week_of: lead.weekOf,
-        init_dt_final: lead.initDtFinal,
-        contact_range: lead.contactRange,
-        htz_region: lead.htzRegion,
-        set_state: lead.setState,
-        zone: lead.zone,
-        area_mgr: lead.areaMgr,
-        general_mgr: lead.generalMgr,
-        rent_loc: lead.rentLoc,
-        last_upload_id: uploadId,
-      });
-      if (error) {
-        results.errors.push({ reservationId: lead.reservationId, error: error.message });
-      } else {
-        results.inserted++;
+const BATCH_SIZE = 200;
+const UPDATE_CONCURRENCY = 20;
+
+export async function commitHlesUpload(uploadId, commitPlan, onProgress) {
+  const results = { inserted: 0, updated: 0, archived: 0, deleted: 0, errors: [] };
+  const totalOps = commitPlan.inserts.length + commitPlan.updates.length + (commitPlan.archives?.length ?? 0) + (commitPlan.deletes?.length ?? 0);
+  let completedOps = 0;
+
+  const reportProgress = (label) => {
+    onProgress?.({ completed: completedOps, total: totalOps, label });
+  };
+
+  // Batch-insert new leads
+  if (commitPlan.inserts.length > 0) {
+    const rows = commitPlan.inserts.map((lead) => leadToInsertRow(lead, uploadId));
+    for (let i = 0; i < rows.length; i += BATCH_SIZE) {
+      let batch = rows.slice(i, i + BATCH_SIZE);
+      reportProgress(`Inserting leads ${i + 1}–${Math.min(i + BATCH_SIZE, rows.length)} of ${rows.length}`);
+      let { error } = await supabase.from("leads").insert(batch);
+      // Retry: if a column doesn't exist in the DB, strip it and retry
+      if (error?.message?.includes("column") && error?.message?.includes("does not exist")) {
+        const missingCol = error.message.match(/column "([^"]+)"/)?.[1];
+        if (missingCol) {
+          console.warn(`[Upload] Column "${missingCol}" missing from DB — skipping it`);
+          batch = batch.map((r) => { const { [missingCol]: _, ...rest } = r; return rest; });
+          ({ error } = await supabase.from("leads").insert(batch));
+        }
       }
-    } catch (err) {
-      results.errors.push({ reservationId: lead.reservationId, error: err.message });
+      if (error) {
+        batch.forEach((r) => results.errors.push({ reservationId: r.reservation_id, error: error.message }));
+      } else {
+        results.inserted += batch.length;
+      }
+      completedOps += batch.length;
     }
   }
 
-  // Update existing leads (source fields only, preserve enrichment)
-  for (const item of commitPlan.updates) {
-    try {
-      const updateFields = {
+  // Parallel-update existing leads
+  if (commitPlan.updates.length > 0) {
+    const now = new Date().toISOString();
+    let skipCol = null;
+
+    const buildUpdateFields = (item) => {
+      const fields = {
         source_status: item.parsed.status,
         insurance_company: item.parsed.insuranceCompany,
         time_to_first_contact: item.parsed.timeToFirstContact,
@@ -778,60 +889,93 @@ export async function commitHlesUpload(uploadId, commitPlan) {
         general_mgr: item.parsed.generalMgr,
         rent_loc: item.parsed.rentLoc,
         cdp_name: item.parsed.cdpName,
+        bm_name: item.existing?.bmName || "—",
         last_upload_id: uploadId,
-        updated_at: new Date().toISOString(),
+        updated_at: now,
       };
+      if (item.useSourceForConflicts || !item.resolution) {
+        fields.status = item.parsed.status;
+        fields.branch = item.parsed.branch;
+      }
+      if (skipCol) delete fields[skipCol];
+      return fields;
+    };
 
-      // If resolution says use_source, also update the conflicting fields
-      if (item.useSourceForConflicts) {
-        updateFields.status = item.parsed.status;
-        updateFields.branch = item.parsed.branch;
-      } else {
-        // Safe source fields that don't conflict with enrichment
-        if (!item.resolution) {
-          updateFields.status = item.parsed.status;
-          updateFields.branch = item.parsed.branch;
+    for (let i = 0; i < commitPlan.updates.length; i += UPDATE_CONCURRENCY) {
+      const batch = commitPlan.updates.slice(i, i + UPDATE_CONCURRENCY);
+      reportProgress(`Updating leads ${i + 1}–${Math.min(i + UPDATE_CONCURRENCY, commitPlan.updates.length)} of ${commitPlan.updates.length}`);
+
+      const settled = await Promise.allSettled(
+        batch.map((item) =>
+          supabase.from("leads").update(buildUpdateFields(item)).eq("id", item.id),
+        ),
+      );
+
+      for (let j = 0; j < settled.length; j++) {
+        const s = settled[j];
+        const err = s.status === "rejected" ? s.reason : s.value?.error;
+        if (err) {
+          // On first missing-column error, remember it and retry just this one
+          if (!skipCol && err.message?.includes("column") && err.message?.includes("does not exist")) {
+            skipCol = err.message.match(/column "([^"]+)"/)?.[1];
+            if (skipCol) {
+              console.warn(`[Upload] Column "${skipCol}" missing — skipping for all updates`);
+              const { error: retryErr } = await supabase.from("leads").update(buildUpdateFields(batch[j])).eq("id", batch[j].id);
+              if (retryErr) {
+                results.errors.push({ reservationId: batch[j].reservationId, error: retryErr.message });
+              } else {
+                results.updated++;
+              }
+              completedOps++;
+              continue;
+            }
+          }
+          results.errors.push({ reservationId: batch[j].reservationId, error: err.message ?? String(err) });
+        } else {
+          results.updated++;
         }
+        completedOps++;
       }
-
-      const { error } = await supabase
-        .from("leads")
-        .update(updateFields)
-        .eq("id", item.id)
-        .select()
-        .single();
-      if (error) {
-        results.errors.push({ reservationId: item.reservationId, error: error.message });
-      } else {
-        results.updated++;
-      }
-    } catch (err) {
-      results.errors.push({ reservationId: item.reservationId, error: err.message });
     }
   }
 
-  // Archive orphaned leads
-  for (const item of commitPlan.archives) {
-    try {
-      const { error } = await supabase
-        .from("leads")
-        .update({ archived: true, updated_at: new Date().toISOString() })
-        .eq("id", item.id);
-      if (error) {
-        results.errors.push({ reservationId: item.reservationId, error: error.message });
-      } else {
-        results.archived++;
-      }
-    } catch (err) {
-      results.errors.push({ reservationId: item.reservationId, error: err.message });
+  // Batch-archive orphaned leads
+  if (commitPlan.archives?.length > 0) {
+    const archiveIds = commitPlan.archives.map((a) => a.id);
+    reportProgress(`Archiving ${archiveIds.length} orphaned leads`);
+    const { error } = await supabase
+      .from("leads")
+      .update({ archived: true, updated_at: new Date().toISOString() })
+      .in("id", archiveIds);
+    if (error) {
+      archiveIds.forEach((id) => results.errors.push({ reservationId: id, error: error.message }));
+    } else {
+      results.archived += archiveIds.length;
     }
+    completedOps += archiveIds.length;
   }
 
-  // Update the upload record
+  // Batch-delete orphaned leads
+  if (commitPlan.deletes?.length > 0) {
+    const deleteIds = commitPlan.deletes.map((d) => d.id);
+    reportProgress(`Removing ${deleteIds.length} orphaned leads`);
+    const { error } = await supabase.from("leads").delete().in("id", deleteIds);
+    if (error) {
+      deleteIds.forEach((id) => results.errors.push({ reservationId: id, error: error.message }));
+    } else {
+      results.deleted = (results.deleted ?? 0) + deleteIds.length;
+    }
+    completedOps += deleteIds.length;
+  }
+
+  reportProgress("Saving upload record");
+
+  const hasErrors = results.errors.length > 0;
   await updateUploadRecord(uploadId, {
-    status: results.errors.length > 0 ? "completed" : "completed",
+    status: hasErrors ? "failed" : "completed",
     newCount: results.inserted,
     updatedCount: results.updated,
+    failedCount: results.errors.length,
   });
 
   return results;
@@ -839,100 +983,333 @@ export async function commitHlesUpload(uploadId, commitPlan) {
 
 /**
  * Commit TRANSLOG upload: append events to matched leads.
+ * Batched: one SELECT for all existing translogs, merge in memory, parallel UPDATEs.
  */
-export async function commitTranslogUpload(uploadId, matchedLeads) {
+export async function commitTranslogUpload(uploadId, matchedLeads, onProgress) {
   const results = { updated: 0, errors: [] };
+  const total = matchedLeads.length;
+  if (!total) return results;
 
-  for (const { lead, events } of matchedLeads) {
-    try {
-      const { data: current } = await supabase
-        .from("leads")
-        .select("translog")
-        .eq("id", lead.id)
-        .single();
+  // 1. Fetch all existing translogs (chunked to avoid URL length limits)
+  onProgress?.({ completed: 0, total, label: "Reading existing activity logs" });
+  const leadIds = matchedLeads.map((m) => m.lead.id).filter(Boolean);
+  const existingById = new Map();
 
-      const existingTranslog = current?.translog ?? [];
-      const newTranslog = [...existingTranslog, ...events.map((e) => ({
-        date: e.systemDate,
-        type: e.eventTypeLabel,
-        detail: e.msgSummary,
-        eventType: e.eventType,
-        empName: e.empName,
-      }))];
-
-      const { error } = await supabase
-        .from("leads")
-        .update({
-          translog: newTranslog,
-          last_upload_id: uploadId,
-          updated_at: new Date().toISOString(),
-        })
-        .eq("id", lead.id);
-
-      if (error) {
-        results.errors.push({ leadId: lead.id, error: error.message });
-      } else {
-        results.updated++;
-      }
-    } catch (err) {
-      results.errors.push({ leadId: lead.id, error: err.message });
+  for (let i = 0; i < leadIds.length; i += BATCH_SIZE) {
+    const chunk = leadIds.slice(i, i + BATCH_SIZE);
+    const { data, error: fetchErr } = await supabase
+      .from("leads")
+      .select("id, translog")
+      .in("id", chunk);
+    if (fetchErr) {
+      chunk.forEach((id) => results.errors.push({ leadId: id, error: fetchErr.message }));
+    } else {
+      (data ?? []).forEach((r) => existingById.set(r.id, r.translog ?? []));
     }
   }
 
+  // 2. Merge new events into existing translogs in memory
+  const updates = matchedLeads.map(({ lead, events }) => {
+    const existing = existingById.get(lead.id) ?? [];
+    const merged = [...existing, ...events.map((e) => ({
+      date: e.systemDate,
+      type: e.eventTypeLabel,
+      detail: e.msgSummary,
+      eventType: e.eventType,
+      empName: e.empName,
+    }))];
+    return { id: lead.id, translog: merged };
+  });
+
+  // 3. Parallel UPDATEs
+  const now = new Date().toISOString();
+  let completed = 0;
+
+  for (let i = 0; i < updates.length; i += UPDATE_CONCURRENCY) {
+    const batch = updates.slice(i, i + UPDATE_CONCURRENCY);
+    onProgress?.({ completed, total, label: `Writing events ${i + 1}–${Math.min(i + UPDATE_CONCURRENCY, total)} of ${total}` });
+
+    const settled = await Promise.allSettled(
+      batch.map((u) =>
+        supabase
+          .from("leads")
+          .update({ translog: u.translog, last_upload_id: uploadId, updated_at: now })
+          .eq("id", u.id),
+      ),
+    );
+
+    for (let j = 0; j < settled.length; j++) {
+      const s = settled[j];
+      if (s.status === "rejected" || s.value?.error) {
+        results.errors.push({ leadId: batch[j].id, error: s.reason?.message ?? s.value?.error?.message });
+      } else {
+        results.updated++;
+      }
+      completed++;
+    }
+  }
+
+  onProgress?.({ completed: total, total, label: "TRANSLOG commit complete" });
   return results;
+}
+
+/**
+ * Insert a new upload_summary row with updated data_as_of_date.
+ * This drives the "Data last updated on ..." banner.
+ */
+export async function insertUploadSummary({ hles = {}, translog = {}, dataAsOfDate }) {
+  const dateStr = dataAsOfDate ?? new Date().toISOString().slice(0, 10);
+  const { data, error } = await supabase
+    .from("upload_summary")
+    .insert({
+      hles,
+      translog,
+      data_as_of_date: dateStr,
+    })
+    .select()
+    .single();
+  if (error) {
+    console.error("[insertUploadSummary] failed:", error);
+    throw error;
+  }
+  return {
+    hles: data.hles ?? {},
+    translog: data.translog ?? {},
+    dataAsOfDate: data.created_at ?? data.data_as_of_date,
+  };
 }
 
 /**
  * Update org mapping from HLES-derived hierarchy.
  * Auto-derives AM/GM/Zone from HLES data. Preserves manual BM assignments.
+ * Batched: one SELECT for all branches, then batched upserts.
  */
 export async function updateOrgMappingFromHles(orgRows, uploadId) {
   const results = { updated: 0, inserted: 0, errors: [] };
+  if (!orgRows?.length) return results;
 
+  // 1. Fetch all existing org_mapping rows in one call
+  const branchNames = orgRows.map((r) => r.branch).filter(Boolean);
+  const { data: existingRows, error: fetchErr } = await supabase
+    .from("org_mapping")
+    .select("id, branch, bm, am, gm, zone")
+    .in("branch", branchNames);
+  if (fetchErr) {
+    return { ...results, errors: [{ branch: "*", error: fetchErr.message }] };
+  }
+
+  const existingByBranch = new Map((existingRows ?? []).map((r) => [r.branch, r]));
+  const now = new Date().toISOString();
+
+  // 2. Split into updates vs inserts.
+  //    Preserves manual BM assignments from the Org Mapping page.
+  const toUpdate = [];
+  const toInsert = [];
   for (const row of orgRows) {
-    try {
-      // Check if branch exists
-      const { data: existing } = await supabase
-        .from("org_mapping")
-        .select("id, bm")
-        .eq("branch", row.branch)
-        .maybeSingle();
-
-      if (existing) {
-        // Update hierarchy fields, preserve BM
-        const { error } = await supabase
-          .from("org_mapping")
-          .update({
-            am: row.am || existing.am,
-            gm: row.gm || existing.gm,
-            zone: row.zone || existing.zone,
-            auto_derived: true,
-            last_upload_id: uploadId,
-            updated_at: new Date().toISOString(),
-          })
-          .eq("id", existing.id);
-        if (error) results.errors.push({ branch: row.branch, error: error.message });
-        else results.updated++;
-      } else {
-        // New branch — insert with placeholder BM
-        const { error } = await supabase
-          .from("org_mapping")
-          .insert({
-            bm: "— Unassigned —",
-            branch: row.branch,
-            am: row.am || "",
-            gm: row.gm || "",
-            zone: row.zone || "",
-            auto_derived: true,
-            last_upload_id: uploadId,
-          });
-        if (error) results.errors.push({ branch: row.branch, error: error.message });
-        else results.inserted++;
-      }
-    } catch (err) {
-      results.errors.push({ branch: row.branch, error: err.message });
+    if (!row.branch) continue;
+    const existing = existingByBranch.get(row.branch);
+    if (existing) {
+      toUpdate.push({
+        id: existing.id,
+        am: row.am || existing.am,
+        gm: row.gm || existing.gm,
+        zone: row.zone || existing.zone,
+        auto_derived: true,
+        last_upload_id: uploadId,
+        updated_at: now,
+      });
+    } else {
+      toInsert.push({
+        bm: "— Unassigned —",
+        branch: row.branch,
+        am: row.am || "",
+        gm: row.gm || "",
+        zone: row.zone || "",
+        auto_derived: true,
+        last_upload_id: uploadId,
+      });
     }
   }
 
+  // 3. Batch-update existing rows (row-by-row because each has a unique id+values)
+  //    Use Promise.all with concurrency limit to avoid hammering the DB
+  const CONCURRENCY = 10;
+  for (let i = 0; i < toUpdate.length; i += CONCURRENCY) {
+    const batch = toUpdate.slice(i, i + CONCURRENCY);
+    const settled = await Promise.allSettled(
+      batch.map(({ id, ...fields }) =>
+        supabase.from("org_mapping").update(fields).eq("id", id),
+      ),
+    );
+    for (let j = 0; j < settled.length; j++) {
+      const s = settled[j];
+      if (s.status === "rejected" || s.value?.error) {
+        results.errors.push({ branch: batch[j].branch ?? `id:${batch[j].id}`, error: s.reason?.message ?? s.value?.error?.message });
+      } else {
+        results.updated++;
+      }
+    }
+  }
+
+  // 4. Batch-insert new branches
+  if (toInsert.length > 0) {
+    const { error: insertErr } = await supabase.from("org_mapping").insert(toInsert);
+    if (insertErr) {
+      toInsert.forEach((r) => results.errors.push({ branch: r.branch, error: insertErr.message }));
+    } else {
+      results.inserted += toInsert.length;
+    }
+  }
+
+  // 5. Auto-link gm_user_id for org_mapping rows whose `gm` text
+  //    matches a user_profile with role='gm' that isn't linked yet.
+  await autoLinkGMUserIds();
+
   return results;
+}
+
+/**
+ * Match org_mapping.gm text names to user_profiles with role='gm' and set
+ * gm_user_id so resolveGMName can look up by FK instead of fragile text match.
+ * Only touches rows where gm_user_id is currently null.
+ */
+async function autoLinkGMUserIds() {
+  const { data: gmProfiles, error: profErr } = await supabase
+    .from("user_profiles")
+    .select("id, display_name")
+    .eq("role", "gm");
+  if (profErr || !gmProfiles?.length) return;
+
+  const { data: unmappedRows, error: fetchErr } = await supabase
+    .from("org_mapping")
+    .select("id, gm")
+    .is("gm_user_id", null)
+    .not("gm", "is", null);
+  if (fetchErr || !unmappedRows?.length) return;
+
+  for (const profile of gmProfiles) {
+    const matching = unmappedRows.filter((r) => r.gm === profile.display_name);
+    if (matching.length === 0) continue;
+    const ids = matching.map((r) => r.id);
+    const { error } = await supabase
+      .from("org_mapping")
+      .update({ gm_user_id: profile.id })
+      .in("id", ids);
+    if (error) console.error(`[autoLinkGMUserIds] Failed for ${profile.display_name}:`, error);
+  }
+}
+
+/**
+ * Remove org_mapping rows that came from seed data and have zero leads.
+ * Safe to call after every upload — only deletes branches with no matching leads.
+ */
+export async function cleanupStaleSeedBranches() {
+  const { data: allBranches, error: fetchErr } = await supabase
+    .from("org_mapping")
+    .select("id, branch");
+  if (fetchErr || !allBranches?.length) return { removed: 0 };
+
+  const { data: activeBranches, error: leadErr } = await supabase
+    .from("leads")
+    .select("branch")
+    .limit(10000);
+  if (leadErr) return { removed: 0 };
+
+  const activeBranchSet = new Set((activeBranches ?? []).map((r) => r.branch));
+  const staleIds = allBranches
+    .filter((r) => !activeBranchSet.has(r.branch))
+    .map((r) => r.id);
+
+  if (staleIds.length === 0) return { removed: 0 };
+
+  const { error: delErr } = await supabase
+    .from("org_mapping")
+    .delete()
+    .in("id", staleIds);
+  if (delErr) {
+    console.error("[cleanupStaleSeedBranches] Delete failed:", delErr);
+    return { removed: 0 };
+  }
+  return { removed: staleIds.length };
+}
+
+/**
+ * De-anonymize uploaded data using persistent code mappings.
+ * Runs after every HLES upload to translate coded values to readable names.
+ * All updates are batched concurrently for speed.
+ */
+export async function applyCodeMappings() {
+  const { cdp, customer, gm, am } = codeMappings;
+  const BATCH = 80;
+  let leadCount = 0;
+  let orgCount = 0;
+
+  const BM_FIRST = ["J","M","A","S","T","R","E","P","C","N","D","F","G","H","B","K","L","W","V"];
+  const BM_LAST = ["Smith","Johnson","Williams","Brown","Jones","Garcia","Miller","Davis","Rodriguez","Martinez","Wilson","Anderson","Thomas","Taylor","Moore","Jackson","Lee","Harris","Clark","Lewis","Robinson","Walker","Allen","King","Wright","Scott","Torres","Nguyen","Hill","Green","Adams","Nelson","Baker","Hall","Rivera","Campbell","Mitchell","Carter","Roberts","Phillips"];
+  function bmNameForBranch(branch) {
+    const hash = [...branch].reduce((h, c) => ((h << 5) - h + c.charCodeAt(0)) | 0, 0);
+    return BM_FIRST[Math.abs(hash) % BM_FIRST.length] + ". " + BM_LAST[Math.abs(hash >> 4) % BM_LAST.length];
+  }
+
+  // 1. De-anonymize leads — fetch all anonymized, batch-update concurrently
+  const { data: anonLeads } = await supabase
+    .from("leads")
+    .select("id, customer, insurance_company, general_mgr, area_mgr")
+    .or("customer.like.CUSTOMER_%,insurance_company.like.CDP_%,general_mgr.like.GEN_MGR_%,area_mgr.like.AREA_MGR_%");
+
+  if (anonLeads?.length) {
+    for (let i = 0; i < anonLeads.length; i += BATCH) {
+      await Promise.allSettled(anonLeads.slice(i, i + BATCH).map((l) => {
+        const u = {};
+        if (l.customer && customer[l.customer]) u.customer = customer[l.customer];
+        if (l.insurance_company && cdp[l.insurance_company]) { u.insurance_company = cdp[l.insurance_company]; u.cdp_name = cdp[l.insurance_company]; }
+        if (l.general_mgr && gm[l.general_mgr]) u.general_mgr = gm[l.general_mgr];
+        if (l.area_mgr && am[l.area_mgr]) u.area_mgr = am[l.area_mgr];
+        return Object.keys(u).length ? supabase.from("leads").update(u).eq("id", l.id) : Promise.resolve({});
+      }));
+    }
+    leadCount = anonLeads.length;
+  }
+
+  // 2. De-anonymize org_mapping GM/AM + assign BM names — single pass, batched
+  const { data: orgs } = await supabase
+    .from("org_mapping")
+    .select("id, gm, am, bm");
+
+  if (orgs?.length) {
+    const updates = orgs.map((o) => {
+      const u = {};
+      if (o.gm && gm[o.gm]) u.gm = gm[o.gm];
+      if (o.am && am[o.am]) u.am = am[o.am];
+      if (!o.bm || o.bm === "— Unassigned —" || o.bm === "MMR" || o.bm === "NO MMR") {
+        u.bm = bmNameForBranch(o.id.toString());
+      }
+      return Object.keys(u).length ? { id: o.id, ...u } : null;
+    }).filter(Boolean);
+
+    for (let i = 0; i < updates.length; i += BATCH) {
+      await Promise.allSettled(updates.slice(i, i + BATCH).map(({ id, ...fields }) =>
+        supabase.from("org_mapping").update(fields).eq("id", id)
+      ));
+    }
+    orgCount = updates.length;
+  }
+
+  // 3. Backfill bm_name on leads from org_mapping — batched
+  const { data: bmOrgs } = await supabase.from("org_mapping").select("branch, bm");
+  const bmByBranch = {};
+  (bmOrgs ?? []).forEach((o) => { if (o.bm && o.bm !== "— Unassigned —") bmByBranch[o.branch] = o.bm; });
+
+  const { data: dashLeads } = await supabase.from("leads").select("id, branch").eq("bm_name", "—");
+  if (dashLeads?.length) {
+    for (let i = 0; i < dashLeads.length; i += BATCH) {
+      await Promise.allSettled(dashLeads.slice(i, i + BATCH).map((l) => {
+        const bm = bmByBranch[l.branch];
+        return bm ? supabase.from("leads").update({ bm_name: bm }).eq("id", l.id) : Promise.resolve({});
+      }));
+    }
+  }
+
+  console.log(`[applyCodeMappings] De-anonymized ${leadCount} leads, ${orgCount} org rows`);
+  return { leads: leadCount, orgs: orgCount };
 }

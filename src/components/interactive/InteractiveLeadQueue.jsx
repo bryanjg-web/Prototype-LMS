@@ -4,6 +4,7 @@ import { useData } from "../../context/DataContext";
 import { getAllLeads, getUnresolvedLeads, getInsuranceCompanies } from "../../selectors/demoSelectors";
 import { getLastTranslogTime } from "../LeadQueue";
 import LeadQueue from "../LeadQueue";
+import { formatDateShort } from "../../utils/dateTime";
 
 // "Now" for this demo
 const NOW = new Date("2026-02-26T09:00:00");
@@ -18,7 +19,7 @@ function getMonday(date) {
 }
 
 function formatShortDate(date) {
-  return date.toLocaleDateString("en-AU", { month: "short", day: "numeric" });
+  return formatDateShort(date);
 }
 
 function getWeekPresets() {

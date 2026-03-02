@@ -1,31 +1,21 @@
 import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
-import { cancellationReasonCategories, nextActions } from "../../data/mockData";
 import { useAuth } from "../../context/AuthContext";
 import { useApp } from "../../context/AppContext";
 import { useData } from "../../context/DataContext";
 import ConfettiCelebration from "../ConfettiCelebration";
+import { formatDateTimeShort, formatDateForInput } from "../../utils/dateTime";
 
 const CLOSE_ACTION = "Close — no further action";
 
 function formatNow() {
-  const d = new Date();
-  return d.toLocaleDateString("en-US", { month: "short", day: "numeric" }) +
-    ", " + d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
-}
-
-function formatDateForInput(dateStr) {
-  if (!dateStr) return "";
-  if (/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) return dateStr;
-  const d = new Date(dateStr);
-  if (isNaN(d.getTime())) return "";
-  return d.toISOString().slice(0, 10);
+  return formatDateTimeShort(new Date());
 }
 
 export default function InteractiveEnrichmentForm({ lead }) {
   const { userProfile } = useAuth();
   const { role } = useApp();
-  const { updateLeadEnrichment, refetchLeads } = useData();
+  const { updateLeadEnrichment, refetchLeads, cancellationReasonCategories, nextActions } = useData();
 
   const existing = lead.enrichment || {};
   const [status, setStatus] = useState(lead.status || "Unused");

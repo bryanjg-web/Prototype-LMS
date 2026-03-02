@@ -2,10 +2,11 @@ import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useApp } from "../../context/AppContext";
 import BackButton from "../BackButton";
-import { cancellationReasonCategories } from "../../data/mockData";
+import { useData } from "../../context/DataContext";
 
 export default function InteractiveLegend() {
   const { navigateTo } = useApp();
+  const { cancellationReasonCategories } = useData();
   const [categories, setCategories] = useState(() =>
     cancellationReasonCategories.map((c) => ({ ...c, reasons: [...c.reasons] })),
   );

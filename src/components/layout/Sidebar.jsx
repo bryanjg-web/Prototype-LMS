@@ -9,9 +9,10 @@ import {
   getMeetingPrepOutstandingCount,
   getDefaultBranchForDemo,
   getGMOutstandingCount,
-  getTasksForGMBranches,
   getGMLeadsToReviewCount,
-  getMismatchLeads,
+  getTasksForGMBranches,
+  getBranchesWithFlags,
+  resolveGMName,
 } from "../../selectors/demoSelectors";
 
 const iconMap = {
@@ -65,6 +66,12 @@ const iconMap = {
       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
     </svg>
   ),
+  eye: (
+    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+    </svg>
+  ),
   book: (
     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
@@ -85,11 +92,16 @@ const iconMap = {
       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 13.255A23.931 23.931 0 0112 15c-3.183 0-6.22-.62-9-1.745M16 6V4a2 2 0 00-2-2h-4a2 2 0 00-2 2v2m4 6h.01M5 20h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
     </svg>
   ),
+  activity: (
+    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />
+    </svg>
+  ),
 };
 
 const SECTION_VIEW_IDS = {
   bm: ["bm-home", "bm-dashboard", "bm-leads", "bm-todo", "bm-work", "bm-meeting-prep", "bm-leaderboard"],
-  gm: ["gm-todos", "gm-meeting-prep", "gm-lead-review", "gm-overview", "gm-business-metrics", "gm-team-performance", "gm-leaderboard"],
+  gm: ["gm-todos", "gm-meeting-prep", "gm-spot-check", "gm-overview", "gm-business-metrics", "gm-team-performance", "gm-activity-report", "gm-leaderboard"],
 };
 
 /** Derives initials from display name (e.g. "Sarah Chen" → "SC"). */
@@ -107,7 +119,7 @@ export default function Sidebar() {
   const isProfileActive = activeView === "profile";
   const reduceMotion = useReducedMotion();
   const { signOut, userProfile } = useAuth();
-  const { leads } = useData();
+  const { leads, gmTasks } = useData();
   const navItems = role ? roleNav[role] || [] : [];
 
   // Outstanding actions for Meeting Prep (this week only) — leads needing comments + data mismatches
@@ -117,9 +129,11 @@ export default function Sidebar() {
     const thisWeek = presets.find((p) => p.key === "this_week");
     if (!thisWeek) return 0;
     const dateRange = { start: thisWeek.start, end: thisWeek.end };
-    const branch = userProfile?.branch ?? getDefaultBranchForDemo();
+    const branch = (userProfile?.branch?.trim() || getDefaultBranchForDemo());
     return getMeetingPrepOutstandingCount(leads ?? [], dateRange, branch);
   }, [role, leads, userProfile?.branch]);
+
+  const gmName = resolveGMName(userProfile?.displayName, userProfile?.id);
 
   // GM Meeting Prep: outstanding branch items + open tasks to chase
   const gmMeetingPrepOutstanding = useMemo(() => {
@@ -128,21 +142,29 @@ export default function Sidebar() {
     const thisWeek = presets.find((p) => p.key === "this_week");
     if (!thisWeek) return 0;
     const dateRange = { start: thisWeek.start, end: thisWeek.end };
-    const outstanding = getGMOutstandingCount(leads ?? [], dateRange);
-    const openTasks = getTasksForGMBranches(null, "D. Williams");
+    const outstanding = getGMOutstandingCount(leads ?? [], dateRange, gmName);
+    const openTasks = getTasksForGMBranches(gmTasks, gmName);
     return outstanding + openTasks.length;
-  }, [role, leads]);
+  }, [role, leads, gmTasks, gmName]);
 
-  // GM Lead Review: leads needing GM review (cancelled unreviewed, unused overdue, mismatches)
-  const gmLeadReviewOutstanding = useMemo(() => {
+  // GM Spot Check: branches with red flags (untouched leads or mismatches)
+  const gmSpotCheckFlags = useMemo(() => {
     if (role !== "gm") return 0;
     const presets = getDateRangePresets();
     const thisWeek = presets.find((p) => p.key === "this_week");
     if (!thisWeek) return 0;
     const dateRange = { start: thisWeek.start, end: thisWeek.end };
-    const toReview = getGMLeadsToReviewCount(leads ?? [], dateRange);
-    const mismatches = getMismatchLeads(leads ?? []).length;
-    return toReview + mismatches;
+    return getBranchesWithFlags(leads ?? [], dateRange, gmName).flaggedBranches;
+  }, [role, leads, gmName]);
+
+  // GM Lead Review: leads pending review (cancelled unreviewed + unused overdue)
+  const gmLeadReviewCount = useMemo(() => {
+    if (role !== "gm") return 0;
+    const presets = getDateRangePresets();
+    const thisWeek = presets.find((p) => p.key === "this_week");
+    if (!thisWeek) return 0;
+    const dateRange = { start: thisWeek.start, end: thisWeek.end };
+    return getGMLeadsToReviewCount(leads ?? [], dateRange);
   }, [role, leads]);
 
   const BM_SCROLL_VIEWS = ["bm-home", "bm-dashboard", "bm-leads", "bm-todo"];
@@ -155,7 +177,7 @@ export default function Sidebar() {
       ? activeView === "bm-task-detail"
         ? "bm-todo"
         : activeView === "gm-lead-detail"
-          ? "gm-lead-review"
+          ? "gm-spot-check"
           : activeView.replace(/-detail$/, "").replace("bm-lead", "bm-leads")
       : activeView;
 
@@ -172,8 +194,8 @@ export default function Sidebar() {
     inSummarySection || (inWorkSection && scrollDirection === "down");
 
   // GM: Work sub-sections (Meeting Prep, Lead Review); Summary sub-sections (Business Metrics, Team Performance)
-  const gmTodosChildIds = ["gm-meeting-prep", "gm-lead-review"];
-  const gmOverviewChildIds = ["gm-business-metrics", "gm-team-performance"];
+  const gmTodosChildIds = ["gm-meeting-prep", "gm-spot-check"];
+  const gmOverviewChildIds = ["gm-business-metrics", "gm-team-performance", "gm-activity-report"];
   const hasGmOverviewChildren = role === "gm" && gmOverviewChildIds.some((id) => navItems.some((n) => n.id === id));
   const hasGmTodosChildren = role === "gm" && gmTodosChildIds.some((id) => navItems.some((n) => n.id === id));
   const inGmOverviewSection = resolvedActive === "gm-overview" || gmOverviewChildIds.includes(resolvedActive);
@@ -248,13 +270,16 @@ export default function Sidebar() {
             item.id === "bm-meeting-prep" && meetingPrepOutstanding > 0;
           const showGmMeetingPrepBadge =
             item.id === "gm-meeting-prep" && gmMeetingPrepOutstanding > 0;
+          const showGmSpotCheckBadge =
+            item.id === "gm-spot-check" && gmSpotCheckFlags > 0;
           const showGmLeadReviewBadge =
-            item.id === "gm-lead-review" && gmLeadReviewOutstanding > 0;
+            item.id === "gm-lead-review" && gmLeadReviewCount > 0;
 
           const badgeCount =
             showMeetingPrepBadge ? meetingPrepOutstanding
             : showGmMeetingPrepBadge ? gmMeetingPrepOutstanding
-            : showGmLeadReviewBadge ? gmLeadReviewOutstanding
+            : showGmSpotCheckBadge ? gmSpotCheckFlags
+            : showGmLeadReviewBadge ? gmLeadReviewCount
             : 0;
           const badgeTitle =
             badgeCount === 1
@@ -265,7 +290,7 @@ export default function Sidebar() {
                 ? `${badgeCount} leads needing review`
                 : `${badgeCount} actions needed before your meeting`;
 
-          const showBadge = showMeetingPrepBadge || showGmMeetingPrepBadge || showGmLeadReviewBadge;
+          const showBadge = showMeetingPrepBadge || showGmMeetingPrepBadge || showGmSpotCheckBadge || showGmLeadReviewBadge;
 
           // Parent items with chevrons
           const isWorkParent = item.id === "bm-work" && hasWorkChildren;
@@ -352,9 +377,17 @@ export default function Sidebar() {
             title="View profile"
             aria-current={isProfileActive ? "page" : undefined}
           >
-            <span className="w-6 h-6 rounded-full bg-[var(--hertz-primary)] text-[var(--hertz-black)] text-[10px] font-bold flex items-center justify-center shrink-0">
-              {userProfile ? getInitials(userProfile.displayName) : roleUsers[role]?.initials}
-            </span>
+            {userProfile?.avatarUrl ? (
+              <img
+                src={userProfile.avatarUrl}
+                alt=""
+                className="w-6 h-6 rounded-full object-cover shrink-0"
+              />
+            ) : (
+              <span className="w-6 h-6 rounded-full bg-[var(--hertz-primary)] text-[var(--hertz-black)] text-[10px] font-bold flex items-center justify-center shrink-0">
+                {userProfile ? getInitials(userProfile.displayName) : roleUsers[role]?.initials}
+              </span>
+            )}
             {!sidebarCollapsed && (
               <span className="text-xs text-[var(--hertz-black)] font-medium truncate">
                 {userProfile?.displayName ?? roleUsers[role]?.name}

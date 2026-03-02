@@ -1,6 +1,6 @@
 import { useState, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { orgMapping } from "../../data/mockData";
+import { useData } from "../../context/DataContext";
 
 const bmOptions = [
   "J. Smith", "M. Johnson", "A. Williams", "S. Davis", "T. Brown",
@@ -8,6 +8,7 @@ const bmOptions = [
 ];
 
 export default function InteractiveOrgMapping() {
+  const { orgMapping } = useData();
   const [rows, setRows] = useState(() =>
     orgMapping.map((r) => ({ ...r, autoDerived: !r.bm || r.bm === "— Unassigned —" ? false : true })),
   );

@@ -1,12 +1,13 @@
 import { useData } from "../../context/DataContext";
+import { formatDate, formatTime } from "../../utils/dateTime";
 
-/** Format data-as-of date for display (e.g. "2026-02-26" → "Feb 26, 2026") */
-function formatDataAsOfDate(dateStr) {
+/** Format an ISO timestamp for display in PST (e.g. "Feb 26, 2026 at 2:32 PM PST") */
+function formatDataTimestamp(dateStr) {
   if (!dateStr) return "";
   try {
-    const d = new Date(dateStr + "T12:00:00");
+    const d = new Date(dateStr);
     if (isNaN(d.getTime())) return dateStr;
-    return d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+    return `${formatDate(d)} at ${formatTime(d)} PST`;
   } catch {
     return dateStr;
   }
@@ -30,7 +31,7 @@ export default function DataBanner() {
       <svg className="w-4 h-4 text-blue-700 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
       </svg>
-      <span className="font-medium">Data last updated on {formatDataAsOfDate(dataAsOfDate)}</span>
+      <span className="font-medium">Data last updated {formatDataTimestamp(dataAsOfDate)}</span>
     </div>
   );
 }

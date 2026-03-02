@@ -12,7 +12,8 @@ import InteractiveEnrichmentForm from "./InteractiveEnrichmentForm";
 import { useApp } from "../../context/AppContext";
 import { useAuth } from "../../context/AuthContext";
 import { useData } from "../../context/DataContext";
-import { getLeadById, getTasksForLead } from "../../selectors/demoSelectors";
+import { getLeadById, getTasksForLead, getUpcomingCommunications } from "../../selectors/demoSelectors";
+import UpcomingCommunications from "../UpcomingCommunications";
 
 export default function MeetingPrepLeadPanel({ lead, isReadOnly, onClose }) {
   const { navigateTo, selectTask } = useApp();
@@ -146,6 +147,12 @@ export default function MeetingPrepLeadPanel({ lead, isReadOnly, onClose }) {
                   userProfile={userProfile}
                   onContactSuccess={loadActivities}
                 />
+              }
+              upcomingCommsSlot={
+                (() => {
+                  const upcomingItems = getUpcomingCommunications(liveLead, contactActivities);
+                  return upcomingItems.length > 0 ? <UpcomingCommunications items={upcomingItems} /> : null;
+                })()
               }
               enrichmentSlot={enrichmentSlot}
               tasksSlot={

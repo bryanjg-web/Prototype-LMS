@@ -10,6 +10,8 @@
     "preview": "vite preview",
     "test:supabase": "node --env-file=.env scripts/test-supabase.mjs",
     "seed:users": "node scripts/seed-demo-users.mjs",
+    "fix:vikram": "node scripts/fix-vikram-user.mjs",
+    "fix:bm-branch": "node scripts/fix-bm-branch.mjs",
     "diagnose:auth": "node --env-file=.env scripts/diagnose-auth.mjs"
   },
   "dependencies": {

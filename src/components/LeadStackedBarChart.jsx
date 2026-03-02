@@ -1,19 +1,17 @@
 import { useState } from "react";
 import { motion, useReducedMotion } from "framer-motion";
 import StatusBadge from "./StatusBadge";
+import { formatDateOnly } from "../utils/dateTime";
 
 const BAR_HEIGHT = 48;
 const SEGMENTS = [
-  { key: "rented", label: "Rented", color: "var(--hertz-primary)" },
-  { key: "cancelled", label: "Cancelled", color: "var(--hertz-black)" },
-  { key: "unused", label: "Unused", color: "var(--neutral-600)" },
+  { key: "rented", label: "Rented", color: "var(--chart-primary)" },
+  { key: "cancelled", label: "Cancelled", color: "var(--chart-black)" },
+  { key: "unused", label: "Unused", color: "var(--chart-neutral)" },
 ];
 
 function formatDate(isoStr) {
-  if (!isoStr) return "—";
-  const d = new Date(isoStr + "T00:00:00");
-  if (isNaN(d.getTime())) return isoStr;
-  return d.toLocaleDateString("en-AU", { month: "short", day: "numeric", year: "numeric" });
+  return formatDateOnly(isoStr);
 }
 
 export default function LeadStackedBarChart({ total, rented, cancelled, unused, leads = [] }) {
@@ -78,12 +76,12 @@ export default function LeadStackedBarChart({ total, rented, cancelled, unused, 
                 className="w-3 h-3 rounded-sm flex-shrink-0"
                 style={{ backgroundColor: seg.color }}
               />
-              <span className="text-[11px] font-medium text-[var(--neutral-600)]">
+              <span className="text-xs font-medium text-[var(--neutral-600)]">
                 {seg.label}: {values[seg.key]}
               </span>
             </div>
           ))}
-          <span className="text-[11px] font-medium text-[var(--neutral-600)] ml-auto">
+          <span className="text-xs font-medium text-[var(--neutral-600)] ml-auto">
             Total: {totalLeads}
           </span>
         </div>
@@ -112,7 +110,7 @@ export default function LeadStackedBarChart({ total, rented, cancelled, unused, 
                     title={`${seg.label}: ${val}`}
                   >
                     {val > 0 && w > 12 && (
-                      <span className="text-[11px] font-bold text-white drop-shadow-sm">
+                      <span className="text-xs font-bold text-white drop-shadow-sm">
                         {val}
                       </span>
                     )}
@@ -165,7 +163,7 @@ export default function LeadStackedBarChart({ total, rented, cancelled, unused, 
                 </tbody>
               </table>
             </div>
-            <div className="bg-[var(--neutral-50)] border-t border-[var(--neutral-200)] px-3 py-2 text-[11px] text-[var(--neutral-600)] font-medium">
+            <div className="bg-[var(--neutral-50)] border-t border-[var(--neutral-200)] px-3 py-2 text-xs text-[var(--neutral-600)] font-medium">
               {sortedLeads.length} lead{sortedLeads.length !== 1 ? "s" : ""} in this period
             </div>
           </div>

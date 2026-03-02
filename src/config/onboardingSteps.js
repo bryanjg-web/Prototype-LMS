@@ -1,8 +1,8 @@
 /**
- * BM Onboarding tour step definitions.
+ * Onboarding tour step definitions (BM + GM).
  * target: CSS selector for spotlight; null = centered modal
  * requiredView: view ID user must be on; tour will navigate if needed
- * actionType: for interactive gates (HER-24); replay mode skips gates
+ * actionType: for interactive gates; replay mode skips gates
  */
 export const BM_ONBOARDING_STEPS = [
   {
@@ -99,6 +99,89 @@ export const BM_ONBOARDING_STEPS = [
     requiredView: "bm-dashboard",
     title: "You're ready to go",
     content: "That's it — you're set up. Use the ? button next to Inbox anytime to revisit this tour.",
+    actionType: null,
+  },
+];
+
+export const GM_ONBOARDING_STEPS = [
+  {
+    id: "welcome",
+    target: null,
+    requiredView: "gm-overview",
+    title: "Welcome to LEO — Manager View",
+    content: "Your zone-level command centre. We'll walk you through the key sections so you can hit the ground running.",
+    actionType: null,
+  },
+  {
+    id: "gm-work",
+    target: "[data-onboarding=gm-work]",
+    requiredView: "gm-overview",
+    title: "Your weekly work",
+    content: "Meeting Prep and Spot Check — the two things you need every week. Start here before your branch meetings.",
+    actionType: null,
+  },
+  {
+    id: "gm-meeting-prep",
+    target: "[data-onboarding=gm-meeting-prep]",
+    requiredView: "gm-overview",
+    title: "Meeting Prep",
+    content: "Review each branch's performance before your weekly meeting. Outstanding items show what still needs attention.",
+    actionType: null,
+  },
+  {
+    id: "gm-spot-check",
+    target: "[data-onboarding=gm-spot-check]",
+    requiredView: "gm-overview",
+    title: "Spot Check",
+    content: "Randomly sample leads across branches to verify data quality and BM follow-through.",
+    actionType: null,
+  },
+  {
+    id: "gm-summary",
+    target: "[data-onboarding=gm-summary]",
+    requiredView: "gm-overview",
+    title: "Zone-wide metrics",
+    content: "Six key metrics across all your branches. Use the time filter to compare periods and spot movement.",
+    actionType: null,
+  },
+  {
+    id: "gm-metric-drilldown",
+    target: "[data-onboarding=gm-metric-drilldown]",
+    requiredView: "gm-overview",
+    title: "Drill into any metric",
+    content: "Click any tile to see what's behind the number — branch-level breakdown, period comparison, and what's driving change.",
+    actionType: null,
+  },
+  {
+    id: "gm-trends",
+    target: "[data-onboarding=gm-trends]",
+    requiredView: "gm-overview",
+    title: "Trends over time",
+    content: "Track any metric over time. Group by branch, insurance company, or status to uncover patterns. Switch between bar, line, and table views.",
+    actionType: null,
+  },
+  {
+    id: "gm-team-performance",
+    target: "[data-onboarding=gm-team-performance]",
+    requiredView: "gm-overview",
+    title: "Team performance",
+    content: "Leaderboard rankings, activity reports, and compliance scores — everything you need to coach your BMs.",
+    actionType: null,
+  },
+  {
+    id: "gm-sidebar",
+    target: "[data-onboarding=sidebar-nav]",
+    requiredView: "gm-overview",
+    title: "Navigate your view",
+    content: "Work, Summary, and Team Performance — your main sections, always one click away in the sidebar.",
+    actionType: null,
+  },
+  {
+    id: "done",
+    target: "[data-onboarding=help-button]",
+    requiredView: "gm-overview",
+    title: "You're all set",
+    content: "That's the tour. Use the ? button anytime to revisit it. Now go run your zone.",
     actionType: null,
   },
 ];

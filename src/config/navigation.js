@@ -6,7 +6,6 @@ export const roleDefaults = {
 
 export const roleNav = {
   bm: [
-    { id: "bm-home", label: "Home", icon: "home", sectionId: "home" },
     { id: "bm-work", label: "Work", icon: "briefcase", sectionId: "work" },
     { id: "bm-meeting-prep", label: "Meeting Prep", icon: "columns", sectionId: "work", parentId: "bm-work" },
     { id: "bm-leaderboard", label: "Leaderboard", icon: "trophy", sectionId: "leaderboard", parentId: "bm-work" },
@@ -17,10 +16,11 @@ export const roleNav = {
   gm: [
     { id: "gm-todos", label: "Work", icon: "briefcase", sectionId: "todos" },
     { id: "gm-meeting-prep", label: "Meeting Prep", icon: "columns", parentId: "gm-todos" },
-    { id: "gm-lead-review", label: "Lead Review", icon: "search", parentId: "gm-todos" },
+    { id: "gm-spot-check", label: "Spot Check", icon: "eye", parentId: "gm-todos" },
     { id: "gm-overview", label: "Summary", icon: "grid" },
     { id: "gm-business-metrics", label: "Business Metrics", icon: "bar-chart", sectionId: "business-metrics", parentId: "gm-overview" },
     { id: "gm-team-performance", label: "Team Performance", icon: "users", sectionId: "team-performance", parentId: "gm-overview" },
+    { id: "gm-activity-report", label: "Activity Report", icon: "activity", parentId: "gm-overview" },
   ],
   admin: [
     { id: "admin-dashboard", label: "Dashboard", icon: "grid" },

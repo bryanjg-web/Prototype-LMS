@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
+import { formatDateRange } from "../utils/dateTime";
 
 const DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
@@ -151,7 +152,7 @@ export function DateRangeCalendarTrigger({ start, end, onStartChange, onEndChang
   };
 
   const label = start && end
-    ? `${new Date(start).toLocaleDateString("en-AU", { month: "short", day: "numeric" })} – ${new Date(end).toLocaleDateString("en-AU", { month: "short", day: "numeric" })}`
+    ? formatDateRange(new Date(start), new Date(end))
     : "Select dates";
 
   return (
