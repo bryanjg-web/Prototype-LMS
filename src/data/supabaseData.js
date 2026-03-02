@@ -361,7 +361,7 @@ function taskFromRow(row) {
     priority: row.priority ?? "Medium",
     assignedTo: row.assigned_to,
     assignedToName: row.assigned_to_name ?? "—",
-    assignedBranch: lead?.branch ?? null,
+    assignedBranch: lead?.branch ?? row.assigned_branch ?? null,
     createdBy: row.created_by_name ?? "—",
     leadId: row.lead_id,
     lead: lead ? { id: lead.id, customer: lead.customer, reservationId: lead.reservation_id, branch: lead.branch } : null,
@@ -379,7 +379,7 @@ function formatTaskDate(isoOrDate) {
   return d.toISOString().slice(0, 10);
 }
 
-/** Fetch tasks for a branch (tasks whose lead belongs to that branch). */
+/** Fetch tasks for a branch (tasks whose lead belongs to that branch, or standalone tasks assigned to that branch). */
 export async function fetchTasksForBranch(branch) {
   // PostgREST may not support .eq('leads.branch', branch) on joined table; use fallback
   const { data, error } = await supabase
@@ -389,7 +389,7 @@ export async function fetchTasksForBranch(branch) {
     .order("created_at", { ascending: true });
   if (error) throw error;
   return (data ?? [])
-    .filter((row) => row.leads?.branch === branch)
+    .filter((row) => row.leads?.branch === branch || (row.lead_id == null && row.assigned_branch === branch))
     .map((row) => taskFromRow(row));
 }
 
@@ -522,6 +522,8 @@ export async function fetchUserProfileByBranch(branch) {
   return data;
 }
 
+const VALID_PRIORITIES = new Set(["High", "Medium", "Low"]);
+
 /** Insert a single task. Returns the created task or throws. */
 export async function insertTask({
   title,
@@ -530,27 +532,32 @@ export async function insertTask({
   leadId,
   assignedTo = null,
   assignedToName,
+  assignedBranch = null,
   createdBy = null,
   createdByName,
   source = "gm_assigned",
   priority = "High",
 }) {
   const dueDateStr = dueDate instanceof Date ? dueDate.toISOString().slice(0, 10) : dueDate;
+  const payload = {
+    title,
+    description,
+    due_date: dueDateStr,
+    lead_id: leadId ?? null,
+    assigned_to: assignedTo,
+    assigned_to_name: assignedToName,
+    assigned_branch: assignedBranch ?? null,
+    created_by: createdBy,
+    created_by_name: createdByName,
+    source,
+    status: "Open",
+  };
+  // Use DB default for priority to avoid constraint violations; only pass if explicitly valid
+  const safePriority = (typeof priority === "string" && VALID_PRIORITIES.has(priority.trim())) ? priority.trim() : "Medium";
+  payload.priority = safePriority;
   const { data, error } = await supabase
     .from("tasks")
-    .insert({
-      title,
-      description,
-      due_date: dueDateStr,
-      lead_id: leadId,
-      assigned_to: assignedTo,
-      assigned_to_name: assignedToName,
-      created_by: createdBy,
-      created_by_name: createdByName,
-      source,
-      priority,
-      status: "Open",
-    })
+    .insert(payload)
     .select("*, leads(id, customer, reservation_id, branch)")
     .single();
   if (error) throw error;

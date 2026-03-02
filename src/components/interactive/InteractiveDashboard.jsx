@@ -1796,6 +1796,7 @@ function BMDashboard({ navigateTo, selectLead, selectTask }) {
             onSubmit={handleCreateTask}
             onCancel={() => setShowCreateTask(false)}
             branch={branch}
+            branchLeads={branchLeads}
             userProfile={userProfile}
           />
         )}

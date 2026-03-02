@@ -98,7 +98,7 @@ function formatDueDate(dueStr) {
 }
 
 export default function InteractiveGMMeetingPrepPage() {
-  const { leads, loading, orgMapping, createComplianceTasksForBranch, winsLearnings, useSupabase, updateLeadDirective, markLeadReviewed, gmTasks } = useData();
+  const { leads, loading, orgMapping, createComplianceTasksForBranch, winsLearnings, useSupabase, updateLeadDirective, markLeadReviewed, gmTasks, fetchGMTasks } = useData();
   const { navigateTo, selectTask, selectLead } = useApp();
   const { userProfile } = useAuth();
   const reduceMotion = useReducedMotion();
@@ -123,6 +123,17 @@ export default function InteractiveGMMeetingPrepPage() {
   const comparisonRange = useMemo(() => getComparisonDateRange(selectedPresetKey), [selectedPresetKey]);
 
   const gmName = resolveGMName(userProfile?.displayName, userProfile?.id);
+  const gmBranches = useMemo(
+    () => (orgMapping ?? []).filter((r) => r.gm === gmName).map((r) => r.branch),
+    [orgMapping, gmName]
+  );
+
+  useEffect(() => {
+    if (useSupabase && gmBranches.length > 0 && fetchGMTasks) {
+      fetchGMTasks(gmBranches);
+    }
+  }, [useSupabase, gmBranches, fetchGMTasks]);
+
   const gmFilteredLeads = useMemo(() => {
     if (!gmName) return leads ?? [];
     const myBranches = (orgMapping ?? []).filter((r) => r.gm === gmName).map((r) => r.branch);
@@ -133,8 +144,10 @@ export default function InteractiveGMMeetingPrepPage() {
   const prevUnreachable = useMemo(() => (comparisonRange ? getUnreachableLeadsStats(leads, comparisonRange, gmName) : null), [leads, comparisonRange, gmName]);
   const unreachableStats = useMemo(() => getUnreachableLeadsStats(leads, dateRange, gmName), [leads, dateRange, gmName]);
   const meetingPrepData = useMemo(() => getGMMeetingPrepData(leads, dateRange, gmName), [leads, dateRange, gmName]);
-  const openTasks = useMemo(() => getTasksForGMBranches(gmTasks, gmName), [gmTasks, gmName]);
-  const tasksProgress = useMemo(() => getGMTasksProgress(gmTasks, gmName), [gmTasks, gmName]);
+  const gmTasksLoading = useSupabase && gmTasks === null;
+  const effectiveGmTasks = gmTasksLoading ? [] : gmTasks;
+  const openTasks = useMemo(() => getTasksForGMBranches(effectiveGmTasks, gmName), [effectiveGmTasks, gmName]);
+  const tasksProgress = useMemo(() => getGMTasksProgress(effectiveGmTasks, gmName), [effectiveGmTasks, gmName]);
   const leadsToReview = useMemo(() => getGMLeads(leads, dateRange, {}, gmName), [leads, dateRange, gmName]);
   const leadsReviewed = useMemo(() => leadsToReview.filter((l) => l.gmDirective).length, [leadsToReview]);
   const leadsProgressPct = leadsToReview.length > 0 ? Math.round((leadsReviewed / leadsToReview.length) * 100) : 100;
@@ -661,7 +674,11 @@ export default function InteractiveGMMeetingPrepPage() {
                     className="overflow-hidden"
                   >
                     <div className="mt-3 border border-[var(--neutral-200)] rounded-lg overflow-hidden bg-white">
-                      {openTasks.length === 0 ? (
+                      {gmTasksLoading ? (
+                        <div className="px-6 py-8 text-center">
+                          <p className="text-[var(--neutral-600)]">Loading tasks…</p>
+                        </div>
+                      ) : openTasks.length === 0 ? (
                         <div className="px-6 py-8 text-center">
                           <p className="text-[var(--neutral-600)]">No open tasks to chase. All tasks assigned to your team are complete.</p>
                         </div>

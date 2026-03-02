@@ -1,19 +1,23 @@
 /**
- * CreateTaskModal — lets BMs create personal tasks (optionally linked to a lead).
- * Persists via DataContext insertTask (Supabase or mock).
+ * CreateTaskModal — lets BMs create tasks linked to a lead.
+ * All mandatory attributes (lead, title, due date, priority) must be set before creating.
  */
 import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 
 const PRIORITY_OPTIONS = ["High", "Medium", "Low"];
+const VALID_PRIORITIES = new Set(PRIORITY_OPTIONS);
 
-export default function CreateTaskModal({ onSubmit, onCancel, lead = null, branch, userProfile }) {
+export default function CreateTaskModal({ onSubmit, onCancel, lead = null, branchLeads = [], branch, userProfile }) {
+  const [selectedLeadId, setSelectedLeadId] = useState(lead?.id ?? "");
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [dueDate, setDueDate] = useState("");
   const [priority, setPriority] = useState("Medium");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
+
+  const selectedLead = lead ?? (selectedLeadId ? branchLeads.find((l) => String(l.id) === String(selectedLeadId)) : null);
 
   useEffect(() => {
     const onKeyDown = (e) => { if (e.key === "Escape") onCancel(); };
@@ -23,13 +27,35 @@ export default function CreateTaskModal({ onSubmit, onCancel, lead = null, branc
 
   useEffect(() => {
     if (lead) {
+      setSelectedLeadId(String(lead.id));
       setTitle(`Follow up: ${lead.customer} (${lead.reservationId})`);
+    } else if (branchLeads.length === 1) {
+      setSelectedLeadId(String(branchLeads[0].id));
     }
-  }, [lead]);
+  }, [lead, branchLeads]);
+
+  const isValid = Boolean(
+    title.trim() &&
+    selectedLeadId &&
+    dueDate &&
+    VALID_PRIORITIES.has(priority)
+  );
 
   const handleSubmit = async () => {
     if (!title.trim()) {
       setError("Title is required");
+      return;
+    }
+    if (!selectedLeadId) {
+      setError("Please select a lead");
+      return;
+    }
+    if (!dueDate) {
+      setError("Due date is required");
+      return;
+    }
+    if (!VALID_PRIORITIES.has(priority)) {
+      setError("Please select a valid priority");
       return;
     }
     setSaving(true);
@@ -38,9 +64,9 @@ export default function CreateTaskModal({ onSubmit, onCancel, lead = null, branc
       await onSubmit({
         title: title.trim(),
         description: description.trim() || null,
-        dueDate: dueDate || null,
+        dueDate,
         priority,
-        leadId: lead?.id ?? null,
+        leadId: Number(selectedLeadId) || selectedLeadId,
         assignedTo: userProfile?.id ?? null,
         assignedToName: userProfile?.displayName ?? branch ?? null,
         assignedBranch: branch,
@@ -85,17 +111,41 @@ export default function CreateTaskModal({ onSubmit, onCancel, lead = null, branc
                 </svg>
               </button>
             </div>
-            {lead && (
+            {selectedLead && (
               <p className="text-sm text-[var(--neutral-600)]">
-                Linked to: <span className="font-medium text-[var(--hertz-black)]">{lead.customer}</span>
+                Linked to: <span className="font-medium text-[var(--hertz-black)]">{selectedLead.customer}</span>
                 <span className="mx-2 text-[var(--neutral-300)]">·</span>
-                {lead.reservationId}
+                {selectedLead.reservationId}
               </p>
             )}
           </div>
 
           {/* Form */}
           <div className="overflow-y-auto flex-1 px-6 py-4 space-y-4">
+            {!lead && (
+              <div>
+                <label className="text-xs text-[var(--neutral-600)] uppercase tracking-wide block mb-1">
+                  Lead <span className="text-[var(--color-error)]">*</span>
+                </label>
+                {branchLeads.length === 0 ? (
+                  <p className="text-sm text-[var(--neutral-600)] py-2">No leads in this branch. Add leads first.</p>
+                ) : (
+                  <select
+                    value={selectedLeadId}
+                    onChange={(e) => { setSelectedLeadId(e.target.value); setError(null); }}
+                    className="w-full border border-[var(--neutral-200)] rounded-md px-3 py-2 text-sm bg-white focus:border-[var(--hertz-primary)] focus:outline-none focus:ring-1 focus:ring-[var(--hertz-primary)]"
+                    required
+                  >
+                    <option value="">Select a lead…</option>
+                    {branchLeads.map((l) => (
+                      <option key={l.id} value={l.id}>
+                        {l.customer ?? "—"} ({l.reservationId ?? l.id})
+                      </option>
+                    ))}
+                  </select>
+                )}
+              </div>
+            )}
             <div>
               <label className="text-xs text-[var(--neutral-600)] uppercase tracking-wide block mb-1">
                 Title <span className="text-[var(--color-error)]">*</span>
@@ -126,12 +176,12 @@ export default function CreateTaskModal({ onSubmit, onCancel, lead = null, branc
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <label className="text-xs text-[var(--neutral-600)] uppercase tracking-wide block mb-1">
-                  Due Date
+                  Due Date <span className="text-[var(--color-error)]">*</span>
                 </label>
                 <input
                   type="date"
                   value={dueDate}
-                  onChange={(e) => setDueDate(e.target.value)}
+                  onChange={(e) => { setDueDate(e.target.value); setError(null); }}
                   className="w-full border border-[var(--neutral-200)] rounded-md px-3 py-2 text-sm bg-white focus:border-[var(--hertz-primary)] focus:outline-none focus:ring-1 focus:ring-[var(--hertz-primary)]"
                 />
               </div>
@@ -179,7 +229,7 @@ export default function CreateTaskModal({ onSubmit, onCancel, lead = null, branc
               <button
                 type="button"
                 onClick={handleSubmit}
-                disabled={saving}
+                disabled={saving || !isValid}
                 className="px-4 py-2 text-sm font-medium bg-[var(--hertz-primary)] text-[var(--hertz-black)] rounded-md hover:bg-[var(--hertz-primary-hover)] transition-colors disabled:opacity-60 disabled:cursor-not-allowed inline-flex items-center gap-2"
               >
                 {saving ? (

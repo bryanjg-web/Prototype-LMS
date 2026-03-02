@@ -14,6 +14,7 @@ import {
   branchManagers as mockBranchManagers,
   weeklyTrends as mockWeeklyTrends,
   leaderboardData as mockLeaderboardData,
+  tasks as mockTasks,
 } from "../data/mockData";
 import {
   fetchLeads,
@@ -95,7 +96,7 @@ export function DataProvider({ children }) {
   });
   const [winsLearnings, setWinsLearnings] = useState(USE_SUPABASE ? [] : [...mockWinsLearnings]);
   const [orgMapping, setOrgMapping] = useState(USE_SUPABASE ? [] : [...mockOrgMapping]);
-  const [gmTasks, setGmTasks] = useState(null);
+  const [gmTasks, setGmTasks] = useState(() => (USE_SUPABASE ? null : [...mockTasks]));
   const [cancellationReasonCategories, setCancellationReasonCategories] = useState(
     USE_SUPABASE ? [] : [...mockCancellationReasonCategories],
   );
