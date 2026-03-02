@@ -5,7 +5,7 @@
 import { useState, useEffect } from "react";
 import { supabase } from "../lib/supabase";
 import EmailComposeModal from "./EmailComposeModal";
-import SmsComposeModal from "./SmsComposeModal";
+import SmsComposeModal from "./SMSComposeModal";
 import { parsePhoneE164, formatLocalDisplay } from "./PhoneInput";
 
 function fmtPhone(phone) {
