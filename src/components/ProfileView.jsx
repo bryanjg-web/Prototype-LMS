@@ -65,7 +65,7 @@ export default function ProfileView() {
     );
   }
 
-  const roleLabel = roleMeta[userProfile.role]?.profileLabel ?? roleMeta[userProfile.role]?.label ?? userProfile.role;
+  const roleLabel = userProfile.title ?? roleMeta[userProfile.role]?.profileLabel ?? roleMeta[userProfile.role]?.label ?? userProfile.role;
   const initials = getInitials(userProfile.displayName);
 
   return (

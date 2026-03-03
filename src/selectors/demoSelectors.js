@@ -255,7 +255,11 @@ export function getLeadById(leads, id) {
  * Priority: gm_user_id (FK, survives re-uploads) → gm text name match → fallback.
  * Returns the gm text value used in org_mapping so downstream selectors work unchanged.
  */
-const GM_ALIASES = { "Vikram Rajagopalan": "Mike Torres" };
+const GM_ALIASES = {
+  "Vikram Rajagopalan": "Mike Torres",
+  "Gil West": "D. Williams",
+  "Mike Moore": "D. Williams",
+};
 
 export function resolveGMName(displayName, userId = null) {
   if (userId) {

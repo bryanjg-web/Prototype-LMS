@@ -39,7 +39,7 @@ export function AuthProvider({ children }) {
       }
       const { data: profile, error: profileErr } = await supabase
         .from("user_profiles")
-        .select("role, display_name, branch, phone, onboarding_completed_at, avatar_url")
+        .select("role, display_name, branch, phone, onboarding_completed_at, avatar_url, title")
         .eq("id", session.user.id)
         .maybeSingle();
       if (profileErr) {
@@ -60,6 +60,7 @@ export function AuthProvider({ children }) {
           email: session.user.email ?? null,
           onboardingCompletedAt: profile.onboarding_completed_at ?? null,
           avatarUrl: profile.avatar_url ?? null,
+          title: profile.title ?? null,
         });
       } else {
         setProfileError("No profile found. Run: npm run seed:users");

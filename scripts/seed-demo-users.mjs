@@ -42,6 +42,8 @@ const DEMO_USERS = [
   { email: "gm@hertz.demo", password: "demo123", role: "gm", display_name: "Mike Torres", branch: null },
   { email: "admin@hertz.demo", password: "demo123", role: "admin", display_name: "Lisa Park", branch: null },
   { email: "Vikram.Rajagopalan@hertz.com", password: "demo123", role: "gm", display_name: "Vikram Rajagopalan", branch: null, avatar_url: "/avatars/vikram-rajagopalan.png" },
+  { email: "gil.west@hertz.com", password: "demo123", role: "gm", display_name: "Gil West", branch: null, avatar_url: "/avatars/gil-west.png", title: "Chief Executive Officer" },
+  { email: "mike.moore@hertz.com", password: "demo123", role: "gm", display_name: "Mike Moore", branch: null, avatar_url: "/avatars/mike-moore.png", title: "Chief Operating Officer" },
 ];
 
 async function seed() {
@@ -60,14 +62,14 @@ async function seed() {
           const found = list?.users?.find((x) => x.email === u.email);
           if (found) {
             await supabase.auth.admin.updateUserById(found.id, { password: u.password });
-            await upsertProfile(found.id, u.role, u.display_name, u.branch, u.avatar_url);
+            await upsertProfile(found.id, u.role, u.display_name, u.branch, u.avatar_url, u.title);
           }
           continue;
         }
         throw createError;
       }
 
-      await upsertProfile(data.user.id, u.role, u.display_name, u.branch, u.avatar_url);
+      await upsertProfile(data.user.id, u.role, u.display_name, u.branch, u.avatar_url, u.title);
       console.log(`  ${u.email} — created (${u.role})`);
     } catch (err) {
       console.error(`  ${u.email} — failed:`, err.message);
@@ -76,10 +78,11 @@ async function seed() {
   console.log("Done.");
 }
 
-async function upsertProfile(userId, role, displayName, branch = null, avatarUrl = null) {
+async function upsertProfile(userId, role, displayName, branch = null, avatarUrl = null, title = null) {
   const row = { id: userId, role, display_name: displayName, updated_at: new Date().toISOString() };
   if (branch !== undefined) row.branch = branch;
   if (avatarUrl !== undefined) row.avatar_url = avatarUrl;
+  if (title !== undefined) row.title = title;
   const { error } = await supabase.from("user_profiles").upsert(row, { onConflict: "id" });
   if (error) throw error;
 }
